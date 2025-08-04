@@ -18,19 +18,41 @@ def main(req: HttpRequest) -> HttpResponse:
         table = service.get_table_client(table_name=table_name)
 
         partition_key = "counter"
-        row_key = "visits"
+        row_key_counter = "visits"
 
+        # 1. Get IP from x-forwarded-for header
+        ip_address = req.headers.get(
+            "x-forwarded-for", "").split(",")[0].strip()
+        if not ip_address:
+            return HttpResponse("IP address not found", status_code=400)
+
+        # 2. Check if IP already exists
         try:
+            table.get_entity(partition_key=partition_key, row_key=ip_address)
+            # IP already counted, return current count
             entity = table.get_entity(
-                partition_key=partition_key, row_key=row_key)
-            entity['count'] += 1
-            table.update_entity(entity)
+                partition_key=partition_key, row_key=row_key_counter)
+            return HttpResponse(f'{{"count": {entity["count"]}}}', mimetype="application/json")
         except:
-            entity = {'PartitionKey': partition_key,
-                      'RowKey': row_key, 'count': 1}
-            table.create_entity(entity)
+            # IP not found, it's a new visitor
+            # Record the new IP
+            table.create_entity({
+                "PartitionKey": partition_key,
+                "RowKey": ip_address
+            })
 
-        return HttpResponse(f'{{"count": {entity["count"]}}}', mimetype="application/json")
+            # Update main counter
+            try:
+                entity = table.get_entity(
+                    partition_key=partition_key, row_key=row_key_counter)
+                entity['count'] += 1
+                table.update_entity(entity)
+            except:
+                entity = {'PartitionKey': partition_key,
+                          'RowKey': row_key_counter, 'count': 1}
+                table.create_entity(entity)
+
+            return HttpResponse(f'{{"count": {entity["count"]}}}', mimetype="application/json")
 
     except Exception as e:
         return HttpResponse(f"Error: {str(e)}", status_code=500)
