@@ -1,0 +1,78 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "domains_saviong_com_email": {
+            "value": null
+        },
+        "domains_saviong_com_nameFirst": {
+            "value": null
+        },
+        "domains_saviong_com_nameLast": {
+            "value": null
+        },
+        "domains_saviong_com_phone": {
+            "value": null
+        },
+        "domains_saviong_com_email_1": {
+            "value": null
+        },
+        "domains_saviong_com_nameFirst_1": {
+            "value": null
+        },
+        "domains_saviong_com_nameLast_1": {
+            "value": null
+        },
+        "domains_saviong_com_phone_1": {
+            "value": null
+        },
+        "domains_saviong_com_email_2": {
+            "value": null
+        },
+        "domains_saviong_com_nameFirst_2": {
+            "value": null
+        },
+        "domains_saviong_com_nameLast_2": {
+            "value": null
+        },
+        "domains_saviong_com_phone_2": {
+            "value": null
+        },
+        "domains_saviong_com_email_3": {
+            "value": null
+        },
+        "domains_saviong_com_nameFirst_3": {
+            "value": null
+        },
+        "domains_saviong_com_nameLast_3": {
+            "value": null
+        },
+        "domains_saviong_com_phone_3": {
+            "value": null
+        },
+        "profiles_resume_name": {
+            "value": null
+        },
+        "sites_resumevisitor_fn_name": {
+            "value": null
+        },
+        "dnszones_saviong_com_name": {
+            "value": null
+        },
+        "serverfarms_ASP_htmlresume_bf8b_name": {
+            "value": null
+        },
+        "storageAccounts_saviongresume_name": {
+            "value": null
+        },
+        "domains_saviong_com_name": {
+            "value": null
+        },
+        "databaseAccounts_resumevisitdb_name": {
+            "value": null
+        },
+        "storageAccounts_htmlresumefunction_name": {
+            "value": null
+        }
+    }
+}
