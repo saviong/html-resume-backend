@@ -144,6 +144,25 @@
                 "zoneRedundant": false,
                 "asyncScalingEnabled": false
             }
+        },
+        {
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2024-11-01",
+            "name": "[parameters('sites_resumevisitor_fn_name')]",
+            "location": "UK South",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', parameters('serverfarms_ASP_htmlresume_bf8b_name'))]"
+            ],
+            "kind": "functionapp,linux",
+            "properties": {
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('serverfarms_ASP_htmlresume_bf8b_name'))]",
+                "reserved": true,
+                "siteConfig": {
+                    "linuxFxVersion": "Python|3.11"
+                },
+                "httpsOnly": true,
+                "publicNetworkAccess": "Enabled"
+            }
         }
     ]
 }
