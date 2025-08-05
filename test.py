@@ -1,60 +1,97 @@
+import os
 import unittest
 from unittest.mock import patch, MagicMock
-from function_app import main
-from azure.functions import HttpRequest
+import azure.functions as func
+from azure.core.exceptions import ResourceNotFoundError
+import function_app
 
 
-class TestVisitorCounter(unittest.TestCase):
+class TestUpdateCounter(unittest.TestCase):
+    def setUp(self):
+        # Ensure the connection string env var is set
+        os.environ['COSMOS_CONNECTION_STRING'] = 'UseDevelopmentStorage=true;'
 
-    @patch("function_app.TableServiceClient")
-    @patch("function_app.os.environ", {"COSMOS_CONNECTION_STRING": "fake-connection-string"})
-    def test_counter_increment_existing(self, mock_table_service):
-        mock_table_client = MagicMock()
+        # Patch TableServiceClient.from_connection_string to return a mock service
+        self.patcher = patch('function_app.TableServiceClient')
+        self.mock_TableServiceClient = self.patcher.start()
+        self.mock_service = MagicMock()
+        self.mock_TableServiceClient.from_connection_string.return_value = self.mock_service
 
-        # Start with count = 5
-        mock_entity = {'PartitionKey': 'counter',
-                       'RowKey': 'visits', 'count': 5}
+        # Patch get_table_client to return a mock table client
+        self.mock_table = MagicMock()
+        self.mock_service.get_table_client.return_value = self.mock_table
 
-        def get_entity(*args, **kwargs):
-            return dict(mock_entity)  # Return a copy
+    def tearDown(self):
+        self.patcher.stop()
+        del os.environ['COSMOS_CONNECTION_STRING']
 
-        def update_entity(entity):
-            mock_entity['count'] = entity['count']  # Simulate saving new value
+    def test_no_ip_header(self):
+        req = func.HttpRequest(
+            'GET', '/api/updateCounter', headers={}, body=None)
+        resp = function_app.main(req)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_body().decode(), "IP address not found")
 
-        mock_table_client.get_entity.side_effect = get_entity
-        mock_table_client.update_entity.side_effect = update_entity
-        mock_table_service.from_connection_string.return_value.get_table_client.return_value = mock_table_client
+    def test_existing_ip(self):
+        ip = '1.2.3.4'
+        # First get_entity(ip) returns something (means IP seen), then get_entity(counter) returns count
+        self.mock_table.get_entity.side_effect = [
+            {'PartitionKey': 'counter', 'RowKey': ip},  # dummy entity for IP
+            {'count': 5}                                # counter entity
+        ]
 
-        req = HttpRequest(
-            method="GET",
-            url="/api/updateCounter",
-            body=None,
-            headers={"x-forwarded-for": "123.45.67.89"}
-        )
+        req = func.HttpRequest('GET', '/api/updateCounter',
+                               headers={'x-forwarded-for': ip}, body=None)
+        resp = function_app.main(req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.mimetype, 'application/json')
+        self.assertEqual(resp.get_body().decode(), '{"count": 5}')
 
-        response = main(req)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('"count": 6', response.get_body().decode())
+    def test_new_ip_and_first_counter(self):
+        ip = '1.2.3.5'
+        # Simulate both entities not found
+        self.mock_table.get_entity.side_effect = ResourceNotFoundError(
+            'Not found')
 
-    @patch("function_app.TableServiceClient")
-    @patch("function_app.os.environ", {"COSMOS_CONNECTION_STRING": "fake-connection-string"})
-    def test_counter_create_new(self, mock_table_service):
-        mock_table_client = MagicMock()
-        mock_table_client.get_entity.side_effect = Exception(
-            "Entity not found")
+        req = func.HttpRequest('GET', '/api/updateCounter',
+                               headers={'x-forwarded-for': ip}, body=None)
+        resp = function_app.main(req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_body().decode(), '{"count": 1}')
 
-        mock_table_service.from_connection_string.return_value.get_table_client.return_value = mock_table_client
+        # Should create two entities: one for the IP, one for the counter
+        self.assertEqual(self.mock_table.create_entity.call_count, 2)
 
-        req = HttpRequest(
-            method="GET",
-            url="/api/updateCounter",
-            body=None,
-            headers={"x-forwarded-for": "98.76.54.32"}
-        )
+    def test_new_ip_and_increment_counter(self):
+        ip = '1.2.3.6'
+        # Raise on IP lookup, succeed on counter lookup
 
-        response = main(req)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('"count": 1', response.get_body().decode())
+        def get_entity_side_effect(partition_key, row_key):
+            if row_key == ip:
+                raise ResourceNotFoundError('IP not found')
+            elif row_key == 'visits':
+                return {'PartitionKey': 'counter', 'RowKey': 'visits', 'count': 10}
+            raise ResourceNotFoundError('Unknown')
+
+        self.mock_table.get_entity.side_effect = get_entity_side_effect
+
+        req = func.HttpRequest('GET', '/api/updateCounter',
+                               headers={'x-forwarded-for': ip}, body=None)
+        resp = function_app.main(req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_body().decode(), '{"count": 11}')
+
+        # Check that we recorded the new IP
+        self.mock_table.create_entity.assert_any_call({
+            'PartitionKey': 'counter',
+            'RowKey': ip
+        })
+        # And that we updated the counter entity
+        self.mock_table.update_entity.assert_called_with({
+            'PartitionKey': 'counter',
+            'RowKey': 'visits',
+            'count': 11
+        })
 
 
 if __name__ == '__main__':
