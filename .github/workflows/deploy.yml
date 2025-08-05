@@ -45,6 +45,6 @@ jobs:
     - name: Deploy to Azure Function App
       uses: Azure/functions-action@v1
       with:
-        app-name: htmlresumefunction  # 🔁 change if your Function App name is different
+        app-name: resumevisitor-fn  # 🔁 change if your Function App name is different
         package: functionapp.zip
         publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
