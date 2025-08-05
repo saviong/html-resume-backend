@@ -970,7 +970,6 @@
                 "hostName": "saviongresume.z33.web.core.windows.net",
                 "httpPort": 80,
                 "httpsPort": 443,
-                "originHostHeader": "saviongresume.z33.web.core.windows.net",
                 "priority": 1,
                 "weight": 1000,
                 "enabledState": "Enabled",
