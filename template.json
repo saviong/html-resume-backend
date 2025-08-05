@@ -856,18 +856,6 @@
             "kind": "functionapp,linux",
             "properties": {
                 "enabled": true,
-                "hostNameSslStates": [
-                    {
-                        "name": "[concat(parameters('sites_resumevisitor_fn_name'), '-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net')]",
-                        "sslState": "Disabled",
-                        "hostType": "Standard"
-                    },
-                    {
-                        "name": "[concat(parameters('sites_resumevisitor_fn_name'), '-dyb9dsguddgzdzge.scm.uksouth-01.azurewebsites.net')]",
-                        "sslState": "Disabled",
-                        "hostType": "Repository"
-                    }
-                ],
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', parameters('serverfarms_ASP_htmlresume_bf8b_name'))]",
                 "reserved": true,
                 "isXenon": false,
@@ -896,7 +884,6 @@
                 "clientCertMode": "Required",
                 "hostNamesDisabled": false,
                 "ipMode": "IPv4",
-                "customDomainVerificationId": "207E69EA2814C259D9FF03C326F9C337C3021755AB6FBA41230ED76A3FC2368A",
                 "containerSize": 1536,
                 "dailyMemoryTimeQuota": 0,
                 "httpsOnly": true,
