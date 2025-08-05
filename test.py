@@ -5,26 +5,36 @@ from azure.functions import HttpRequest
 
 
 class TestVisitorCounter(unittest.TestCase):
+
     @patch("function_app.TableServiceClient")
     @patch("function_app.os.environ", {"COSMOS_CONNECTION_STRING": "fake-connection-string"})
     def test_counter_increment_existing(self, mock_table_service):
         mock_table_client = MagicMock()
+
+        # Start with count = 5
         mock_entity = {'PartitionKey': 'counter',
                        'RowKey': 'visits', 'count': 5}
 
-        mock_table_client.get_entity.return_value = mock_entity
+        def get_entity(*args, **kwargs):
+            return dict(mock_entity)  # Return a copy
+
+        def update_entity(entity):
+            mock_entity['count'] = entity['count']  # Simulate saving new value
+
+        mock_table_client.get_entity.side_effect = get_entity
+        mock_table_client.update_entity.side_effect = update_entity
         mock_table_service.from_connection_string.return_value.get_table_client.return_value = mock_table_client
 
-        req = HttpRequest(
-            method="GET",
-            url="/api/updateCounter",
-            body=None,
-            headers={"x-forwarded-for": "123.45.67.89"}  # ✅ Added header
-        )
+    req = HttpRequest(
+        method="GET",
+        url="/api/updateCounter",
+        body=None,
+        headers={"x-forwarded-for": "123.45.67.89"}
+    )
 
-        response = main(req)
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('"count": 6', response.get_body().decode())
+    response = main(req)
+    self.assertEqual(response.status_code, 200)
+    self.assertIn('"count": 6', response.get_body().decode())
 
     @patch("function_app.TableServiceClient")
     @patch("function_app.os.environ", {"COSMOS_CONNECTION_STRING": "fake-connection-string"})
