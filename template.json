@@ -323,19 +323,6 @@
             }
         },
         {
-            "type": "Microsoft.Cdn/profiles/secrets",
-            "apiVersion": "2025-04-15",
-            "name": "[concat(parameters('profiles_resume_name'), '/0--df8ef828-34c3-4e29-a3b3-dce731960961-mycv-saviong-com')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Cdn/profiles', parameters('profiles_resume_name'))]"
-            ],
-            "properties": {
-                "parameters": {
-                    "type": "ManagedCertificate"
-                }
-            }
-        },
-        {
             "type": "Microsoft.DocumentDB/databaseAccounts/cassandraRoleDefinitions",
             "apiVersion": "2025-05-01-preview",
             "name": "[concat(parameters('databaseAccounts_resumevisitdb_name'), '/00000000-0000-0000-0000-000000000003')]",
@@ -660,22 +647,6 @@
                     "phone": "[parameters('domains_saviong_com_phone_3')]"
                 },
                 "consent": {}
-            }
-        },
-        {
-            "type": "Microsoft.Network/dnszones/CNAME",
-            "apiVersion": "2023-07-01-preview",
-            "name": "[concat(parameters('dnszones_saviong_com_name'), '/mycv')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/dnszones', parameters('dnszones_saviong_com_name'))]"
-            ],
-            "properties": {
-                "TTL": 3600,
-                "CNAMERecord": {
-                    "cname": "savio-dkecczebbpb0epav.z01.azurefd.net"
-                },
-                "targetResource": {},
-                "trafficManagementProfile": {}
             }
         },
         {
@@ -1050,57 +1021,6 @@
             }
         },
         {
-            "type": "Microsoft.Web/sites/functions",
-            "apiVersion": "2024-11-01",
-            "name": "[concat(parameters('sites_resumevisitor_fn_name'), '/updateCounter')]",
-            "location": "UK South",
-            "dependsOn": [
-                "[resourceId('Microsoft.Web/sites', parameters('sites_resumevisitor_fn_name'))]"
-            ],
-            "properties": {
-                "script_href": "https://resumevisitor-fn-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net/admin/vfs/home/site/wwwroot/function_app.py",
-                "test_data_href": "https://resumevisitor-fn-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net/admin/vfs/tmp/FunctionsData/updateCounter.dat",
-                "href": "https://resumevisitor-fn-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net/admin/functions/updateCounter",
-                "config": {
-                    "name": "updateCounter",
-                    "entryPoint": "updateCounter",
-                    "scriptFile": "function_app.py",
-                    "language": "python",
-                    "functionDirectory": "/home/site/wwwroot",
-                    "bindings": [
-                        {
-                            "direction": "IN",
-                            "type": "httpTrigger",
-                            "name": "req",
-                            "authLevel": "ANONYMOUS",
-                            "route": "updateCounter"
-                        },
-                        {
-                            "direction": "OUT",
-                            "type": "http",
-                            "name": "$return"
-                        }
-                    ]
-                },
-                "invoke_url_template": "https://resumevisitor-fn-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net/api/updatecounter",
-                "language": "python",
-                "isDisabled": false
-            }
-        },
-        {
-            "type": "Microsoft.Web/sites/hostNameBindings",
-            "apiVersion": "2024-11-01",
-            "name": "[concat(parameters('sites_resumevisitor_fn_name'), '/', parameters('sites_resumevisitor_fn_name'), '-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net')]",
-            "location": "UK South",
-            "dependsOn": [
-                "[resourceId('Microsoft.Web/sites', parameters('sites_resumevisitor_fn_name'))]"
-            ],
-            "properties": {
-                "siteName": "resumevisitor-fn",
-                "hostNameType": "Verified"
-            }
-        },
-        {
             "type": "Microsoft.Cdn/profiles/origingroups/origins",
             "apiVersion": "2025-04-15",
             "name": "[concat(parameters('profiles_resume_name'), '/default-origin-group/default-origin')]",
@@ -1210,112 +1130,7 @@
                 "[resourceId('Microsoft.Storage/storageAccounts', parameters('storageAccounts_htmlresumefunction_name'))]"
             ],
             "properties": {}
-        },
-        {
-            "type": "Microsoft.Cdn/profiles/customdomains",
-            "apiVersion": "2025-04-15",
-            "name": "[concat(parameters('profiles_resume_name'), '/mycv-saviong-com-dd3a')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Cdn/profiles', parameters('profiles_resume_name'))]",
-                "[resourceId('Microsoft.Cdn/profiles/secrets', parameters('profiles_resume_name'), '0--df8ef828-34c3-4e29-a3b3-dce731960961-mycv-saviong-com')]",
-                "[resourceId('Microsoft.Network/dnszones', parameters('dnszones_saviong_com_name'))]"
-            ],
-            "properties": {
-                "hostName": "mycv.saviong.com",
-                "tlsSettings": {
-                    "certificateType": "ManagedCertificate",
-                    "minimumTlsVersion": "TLS12",
-                    "cipherSuiteSetType": "TLS12_2023",
-                    "secret": {
-                        "id": "[resourceId('Microsoft.Cdn/profiles/secrets', parameters('profiles_resume_name'), '0--df8ef828-34c3-4e29-a3b3-dce731960961-mycv-saviong-com')]"
-                    }
-                },
-                "azureDnsZone": {
-                    "id": "[resourceId('Microsoft.Network/dnszones', parameters('dnszones_saviong_com_name'))]"
-                }
-            }
-        },
-        {
-            "type": "Microsoft.Cdn/profiles/afdendpoints/routes",
-            "apiVersion": "2025-04-15",
-            "name": "[concat(parameters('profiles_resume_name'), '/savio/default-route')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Cdn/profiles/afdendpoints', parameters('profiles_resume_name'), 'savio')]",
-                "[resourceId('Microsoft.Cdn/profiles', parameters('profiles_resume_name'))]",
-                "[resourceId('Microsoft.Cdn/profiles/customdomains', parameters('profiles_resume_name'), 'mycv-saviong-com-dd3a')]",
-                "[resourceId('Microsoft.Cdn/profiles/origingroups', parameters('profiles_resume_name'), 'default-origin-group')]"
-            ],
-            "properties": {
-                "cacheConfiguration": {
-                    "compressionSettings": {
-                        "isCompressionEnabled": true,
-                        "contentTypesToCompress": [
-                            "application/eot",
-                            "application/font",
-                            "application/font-sfnt",
-                            "application/javascript",
-                            "application/json",
-                            "application/opentype",
-                            "application/otf",
-                            "application/pkcs7-mime",
-                            "application/truetype",
-                            "application/ttf",
-                            "application/vnd.ms-fontobject",
-                            "application/xhtml+xml",
-                            "application/xml",
-                            "application/xml+rss",
-                            "application/x-font-opentype",
-                            "application/x-font-truetype",
-                            "application/x-font-ttf",
-                            "application/x-httpd-cgi",
-                            "application/x-javascript",
-                            "application/x-mpegurl",
-                            "application/x-opentype",
-                            "application/x-otf",
-                            "application/x-perl",
-                            "application/x-ttf",
-                            "font/eot",
-                            "font/ttf",
-                            "font/otf",
-                            "font/opentype",
-                            "image/svg+xml",
-                            "text/css",
-                            "text/csv",
-                            "text/html",
-                            "text/javascript",
-                            "text/js",
-                            "text/plain",
-                            "text/richtext",
-                            "text/tab-separated-values",
-                            "text/xml",
-                            "text/x-script",
-                            "text/x-component",
-                            "text/x-java-source"
-                        ]
-                    },
-                    "queryStringCachingBehavior": "IgnoreQueryString"
-                },
-                "customDomains": [
-                    {
-                        "id": "[resourceId('Microsoft.Cdn/profiles/customdomains', parameters('profiles_resume_name'), 'mycv-saviong-com-dd3a')]"
-                    }
-                ],
-                "originGroup": {
-                    "id": "[resourceId('Microsoft.Cdn/profiles/origingroups', parameters('profiles_resume_name'), 'default-origin-group')]"
-                },
-                "ruleSets": [],
-                "supportedProtocols": [
-                    "Http",
-                    "Https"
-                ],
-                "patternsToMatch": [
-                    "/*"
-                ],
-                "forwardingProtocol": "MatchRequest",
-                "linkToDefaultDomain": "Enabled",
-                "httpsRedirect": "Enabled",
-                "enabledState": "Enabled"
-            }
         }
+
     ]
 }
