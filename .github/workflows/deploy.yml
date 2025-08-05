@@ -32,12 +32,13 @@ jobs:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
     - name: Deploy ARM Template
-      uses: azure/arm-deploy@v1
+      uses: azure/arm-deploy@v2
       with:
         subscriptionId: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
         resourceGroupName: html-resume
         template: template.json
         parameters: parameters.json
+        failOnStdErr: false
 
     - name: Zip Azure Function App code
       run: zip -r functionapp.zip .
