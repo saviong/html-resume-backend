@@ -19,6 +19,7 @@ class TestVisitorCounter(unittest.TestCase):
             method="GET",
             url="/api/updateCounter",
             body=None,
+            headers={"x-forwarded-for": "123.45.67.89"}  # ✅ Added header
         )
 
         response = main(req)
@@ -31,13 +32,13 @@ class TestVisitorCounter(unittest.TestCase):
         mock_table_client = MagicMock()
         mock_table_client.get_entity.side_effect = Exception(
             "Entity not found")
-
         mock_table_service.from_connection_string.return_value.get_table_client.return_value = mock_table_client
 
         req = HttpRequest(
             method="GET",
             url="/api/updateCounter",
             body=None,
+            headers={"x-forwarded-for": "98.76.54.32"}  # ✅ Added header
         )
 
         response = main(req)
