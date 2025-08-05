@@ -36,27 +36,44 @@ jobs:
       with:
         azcliversion: '2.72.0'
         inlineScript: |
+          # build up a single --parameters argument list
+          OVERRIDES=(
+            domains_saviong_com_email="${{ secrets.DOMAIN_EMAIL }}"
+            domains_saviong_com_nameFirst="${{ secrets.DOMAIN_NAME_FIRST }}"
+            domains_saviong_com_nameLast="${{ secrets.DOMAIN_NAME_LAST }}"
+            domains_saviong_com_phone="${{ secrets.DOMAIN_PHONE }}"
+
+            domains_saviong_com_email_1="${{ secrets.DOMAIN_EMAIL_1 }}"
+            domains_saviong_com_nameFirst_1="${{ secrets.DOMAIN_NAME_FIRST_1 }}"
+            domains_saviong_com_nameLast_1="${{ secrets.DOMAIN_NAME_LAST_1 }}"
+            domains_saviong_com_phone_1="${{ secrets.DOMAIN_PHONE_1 }}"
+
+            domains_saviong_com_email_2="${{ secrets.DOMAIN_EMAIL_2 }}"
+            domains_saviong_com_nameFirst_2="${{ secrets.DOMAIN_NAME_FIRST_2 }}"
+            domains_saviong_com_nameLast_2="${{ secrets.DOMAIN_NAME_LAST_2 }}"
+            domains_saviong_com_phone_2="${{ secrets.DOMAIN_PHONE_2 }}"
+
+            domains_saviong_com_email_3="${{ secrets.DOMAIN_EMAIL_3 }}"
+            domains_saviong_com_nameFirst_3="${{ secrets.DOMAIN_NAME_FIRST_3 }}"
+            domains_saviong_com_nameLast_3="${{ secrets.DOMAIN_NAME_LAST_3 }}"
+            domains_saviong_com_phone_3="${{ secrets.DOMAIN_PHONE_3 }}"
+          )
+
+          # Validate
           az deployment group validate \
             --resource-group html-resume \
             --template-file template.json \
             --parameters @parameters.json \
-            domains_saviong_com_email="${{ secrets.DOMAIN_EMAIL }}" \
-            domains_saviong_com_nameFirst="${{ secrets.DOMAIN_NAME_FIRST }}" \
-            domains_saviong_com_nameLast="${{ secrets.DOMAIN_NAME_LAST }}" \
-            domains_saviong_com_phone="${{ secrets.DOMAIN_PHONE }}" \
+            "${OVERRIDES[@]}" \
             --only-show-errors
 
+          # Deploy
           az deployment group create \
             --resource-group html-resume \
             --template-file template.json \
             --parameters @parameters.json \
-            domains_saviong_com_email="${{ secrets.DOMAIN_EMAIL }}" \
-            domains_saviong_com_nameFirst="${{ secrets.DOMAIN_NAME_FIRST }}" \
-            domains_saviong_com_nameLast="${{ secrets.DOMAIN_NAME_LAST }}" \
-            domains_saviong_com_phone="${{ secrets.DOMAIN_PHONE }}" \
+            "${OVERRIDES[@]}" \
             --only-show-errors
-
-
 
     - name: Zip Azure Function App code
       run: zip -r functionapp.zip .
