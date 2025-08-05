@@ -31,22 +31,31 @@ jobs:
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-    - name: Deploy ARM Template (CLI)
+    - name: Deploy ARM Template (secure)
       uses: azure/cli@v1
       with:
-        azcliversion: '2.72.0'            
+        azcliversion: '2.72.0'
         inlineScript: |
           az deployment group validate \
             --resource-group html-resume \
             --template-file template.json \
             --parameters @parameters.json \
-            --only-show-errors           
+            domains_saviong_com_email="${{ secrets.DOMAIN_EMAIL }}" \
+            domains_saviong_com_nameFirst="${{ secrets.DOMAIN_NAME_FIRST }}" \
+            domains_saviong_com_nameLast="${{ secrets.DOMAIN_NAME_LAST }}" \
+            domains_saviong_com_phone="${{ secrets.DOMAIN_PHONE }}" \
+            --only-show-errors
 
           az deployment group create \
             --resource-group html-resume \
             --template-file template.json \
             --parameters @parameters.json \
+            domains_saviong_com_email="${{ secrets.DOMAIN_EMAIL }}" \
+            domains_saviong_com_nameFirst="${{ secrets.DOMAIN_NAME_FIRST }}" \
+            domains_saviong_com_nameLast="${{ secrets.DOMAIN_NAME_LAST }}" \
+            domains_saviong_com_phone="${{ secrets.DOMAIN_PHONE }}" \
             --only-show-errors
+
 
 
     - name: Zip Azure Function App code
