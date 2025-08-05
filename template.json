@@ -650,55 +650,6 @@
             }
         },
         {
-            "type": "Microsoft.Network/dnszones/NS",
-            "apiVersion": "2023-07-01-preview",
-            "name": "[concat(parameters('dnszones_saviong_com_name'), '/@')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/dnszones', parameters('dnszones_saviong_com_name'))]"
-            ],
-            "properties": {
-                "TTL": 172800,
-                "NSRecords": [
-                    {
-                        "nsdname": "ns1-07.azure-dns.com."
-                    },
-                    {
-                        "nsdname": "ns2-07.azure-dns.net."
-                    },
-                    {
-                        "nsdname": "ns3-07.azure-dns.org."
-                    },
-                    {
-                        "nsdname": "ns4-07.azure-dns.info."
-                    }
-                ],
-                "targetResource": {},
-                "trafficManagementProfile": {}
-            }
-        },
-        {
-            "type": "Microsoft.Network/dnszones/SOA",
-            "apiVersion": "2023-07-01-preview",
-            "name": "[concat(parameters('dnszones_saviong_com_name'), '/@')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/dnszones', parameters('dnszones_saviong_com_name'))]"
-            ],
-            "properties": {
-                "TTL": 3600,
-                "SOARecord": {
-                    "email": "azuredns-hostmaster.microsoft.com",
-                    "expireTime": 2419200,
-                    "host": "ns1-07.azure-dns.com.",
-                    "minimumTTL": 300,
-                    "refreshTime": 3600,
-                    "retryTime": 300,
-                    "serialNumber": 1
-                },
-                "targetResource": {},
-                "trafficManagementProfile": {}
-            }
-        },
-        {
             "type": "Microsoft.Storage/storageAccounts/blobServices",
             "apiVersion": "2025-01-01",
             "name": "[concat(parameters('storageAccounts_htmlresumefunction_name'), '/default')]",
