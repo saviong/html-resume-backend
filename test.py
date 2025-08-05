@@ -25,16 +25,16 @@ class TestVisitorCounter(unittest.TestCase):
         mock_table_client.update_entity.side_effect = update_entity
         mock_table_service.from_connection_string.return_value.get_table_client.return_value = mock_table_client
 
-    req = HttpRequest(
-        method="GET",
-        url="/api/updateCounter",
-        body=None,
-        headers={"x-forwarded-for": "123.45.67.89"}
-    )
+        req = HttpRequest(
+            method="GET",
+            url="/api/updateCounter",
+            body=None,
+            headers={"x-forwarded-for": "123.45.67.89"}
+        )
 
-    response = main(req)
-    self.assertEqual(response.status_code, 200)
-    self.assertIn('"count": 6', response.get_body().decode())
+        response = main(req)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('"count": 6', response.get_body().decode())
 
     @patch("function_app.TableServiceClient")
     @patch("function_app.os.environ", {"COSMOS_CONNECTION_STRING": "fake-connection-string"})
@@ -42,13 +42,14 @@ class TestVisitorCounter(unittest.TestCase):
         mock_table_client = MagicMock()
         mock_table_client.get_entity.side_effect = Exception(
             "Entity not found")
+
         mock_table_service.from_connection_string.return_value.get_table_client.return_value = mock_table_client
 
         req = HttpRequest(
             method="GET",
             url="/api/updateCounter",
             body=None,
-            headers={"x-forwarded-for": "98.76.54.32"}  # ✅ Added header
+            headers={"x-forwarded-for": "98.76.54.32"}
         )
 
         response = main(req)
