@@ -50,14 +50,8 @@ jobs:
             --parameters @parameters.json \
             --only-show-errors
 
-
-    - name: Zip Azure Function App code
-      run: |
-        zip -r functionapp.zip . -x "*.git*" -x "functionapp.zip"
-
     - name: Deploy to Azure Function App
       uses: Azure/functions-action@v1
       with:
         app-name: resumevisitor-fn  
-        package: functionapp.zip
-        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
+        package: '.'
