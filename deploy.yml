@@ -41,7 +41,8 @@ jobs:
         failOnStdErr: false
 
     - name: Zip Azure Function App code
-      run: zip -r functionapp.zip .
+      run: |
+        zip -r functionapp.zip . -x "*.git*" -x "functionapp.zip"
 
     - name: Deploy to Azure Function App using CLI
       uses: azure/cli@v1
