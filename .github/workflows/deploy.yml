@@ -52,7 +52,8 @@ jobs:
 
 
     - name: Zip Azure Function App code
-      run: zip -r functionapp.zip .
+      run: |
+        zip -r functionapp.zip . -x "*.git*" -x "functionapp.zip"
 
     - name: Deploy to Azure Function App
       uses: Azure/functions-action@v1
