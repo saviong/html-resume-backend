@@ -78,14 +78,19 @@ jobs:
           python -m pip install --upgrade pip
           mkdir -p .python_packages/lib/site-packages
           pip install -r requirements.txt -t .python_packages/lib/site-packages
-          # sanity check that key packages are present
+          # sanity check concrete modules (namespace-safe)
           python - <<'PY'
-          import pkgutil, sys
-          need = ["azure", "azure.functions", "azure.data.tables"]
-          missing = [m for m in need if not pkgutil.find_loader(m)]
-          print("Missing modules:", missing)
-          sys.exit(1 if missing else 0)
-          PY
+          import importlib, sys
+          need = ["azure.functions", "azure.data.tables"]
+          missing = []
+          for m in need:
+          try:
+              importlib.import_module(m)
+          except Exception:
+              missing.append(m)
+              print("Missing modules:", missing)
+              sys.exit(1 if missing else 0)
+              PY
 
       - name: Create function zip (zip contents, prune junk)
         run: |
