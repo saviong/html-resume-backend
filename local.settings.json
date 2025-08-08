@@ -1,0 +1,8 @@
+{
+    "IsEncrypted": false,
+    "Values": {
+        "AzureWebJobsStorage": "",
+        "FUNCTIONS_WORKER_RUNTIME": "python",
+        "COSMOS_CONNECTION_STRING": "your_cosmos_connection_string_here"
+    }
+}

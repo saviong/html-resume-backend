@@ -2,5 +2,6 @@
 # The Python Worker is managed by Azure Functions platform
 # Manually managing azure-functions-worker may cause unexpected issues
 
-azure-functions>=1.11.0,<2.0.0
-azure-data-tables>=12.4.0
+azure-functions
+azure-data-tables
+azure-core

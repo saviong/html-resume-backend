@@ -1,22 +1,23 @@
 import azure.functions as func
-from azure.functions import AuthLevel, HttpRequest, HttpResponse
+from azure.functions import AuthLevel
 from azure.data.tables import TableServiceClient
 from azure.core.exceptions import ResourceNotFoundError
 import os
 import logging
 import json
 
+# Initialize the Function App
 app = func.FunctionApp(http_auth_level=AuthLevel.ANONYMOUS)
 
 
 @app.function_name(name="updateCounter")
 @app.route(route="updateCounter", methods=["GET", "POST", "OPTIONS"])
-def main(req: HttpRequest) -> HttpResponse:
+def update_counter(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
 
     # Handle CORS preflight requests
     if req.method == "OPTIONS":
-        return HttpResponse(
+        return func.HttpResponse(
             "",
             status_code=200,
             headers={
@@ -33,7 +34,7 @@ def main(req: HttpRequest) -> HttpResponse:
         if not connection_string:
             logging.error(
                 "COSMOS_CONNECTION_STRING environment variable not found")
-            return HttpResponse(
+            return func.HttpResponse(
                 json.dumps({"count": "N/A", "error": "Configuration error"}),
                 status_code=500,
                 mimetype="application/json",
@@ -52,17 +53,15 @@ def main(req: HttpRequest) -> HttpResponse:
             conn_str=connection_string)
         table = service.get_table_client(table_name=table_name)
 
-        # Get IP address - exactly as tests expect
+        # Get IP address
         ip_address = req.headers.get(
             "x-forwarded-for", "").split(",")[0].strip()
         if not ip_address:
             ip_address = req.headers.get("x-real-ip", "")
         if not ip_address:
             ip_address = req.headers.get("x-client-ip", "")
-
-        # If no IP address found, return 400 with plain text (test expectation)
         if not ip_address:
-            return HttpResponse("IP address not found", status_code=400)
+            ip_address = "unknown"
 
         logging.info(f"Processing request from IP: {ip_address}")
 
@@ -77,8 +76,6 @@ def main(req: HttpRequest) -> HttpResponse:
                 f"IP {ip_address} not found, will count as new visitor")
         except Exception as e:
             logging.error(f"Error checking IP: {str(e)}")
-            # Treat as new visitor if we can't determine
-            pass
 
         # Get the main counter
         current_count = 0
@@ -91,16 +88,13 @@ def main(req: HttpRequest) -> HttpResponse:
                 f"Current count from existing counter: {current_count}")
         except ResourceNotFoundError:
             logging.info("Counter entity not found, will create new one")
-            # Counter doesn't exist, we'll create it when we have a new visitor
-            pass
         except Exception as e:
             logging.error(f"Error getting counter: {str(e)}")
-            pass
 
         # If IP hasn't been counted before, increment counter and record IP
         if not ip_exists:
             try:
-                # Record the new IP - exactly as test expects
+                # Record the new IP
                 table.create_entity({
                     "PartitionKey": partition_key,
                     "RowKey": ip_address
@@ -129,7 +123,7 @@ def main(req: HttpRequest) -> HttpResponse:
 
             except Exception as e:
                 logging.error(f"Error updating counter: {str(e)}")
-                return HttpResponse(
+                return func.HttpResponse(
                     json.dumps({"count": "N/A", "error": "Database error"}),
                     status_code=500,
                     mimetype="application/json",
@@ -139,8 +133,8 @@ def main(req: HttpRequest) -> HttpResponse:
                     }
                 )
 
-        # Return success response with proper mimetype
-        return HttpResponse(
+        # Return success response
+        return func.HttpResponse(
             json.dumps({"count": current_count}),
             status_code=200,
             mimetype="application/json",
@@ -152,7 +146,7 @@ def main(req: HttpRequest) -> HttpResponse:
 
     except Exception as e:
         logging.error(f"Function error: {str(e)}")
-        return HttpResponse(
+        return func.HttpResponse(
             json.dumps({"count": "N/A", "error": "Server error"}),
             status_code=500,
             mimetype="application/json",
