@@ -83,14 +83,6 @@ jobs:
           import importlib, sys
           need = ["azure.functions", "azure.data.tables"]
           missing = []
-          for m in need:
-          try:
-              importlib.import_module(m)
-          except Exception:
-              missing.append(m)
-              print("Missing modules:", missing)
-              sys.exit(1 if missing else 0)
-              PY
 
       - name: Create function zip (zip contents, prune junk)
         run: |
@@ -114,3 +106,17 @@ jobs:
               --resource-group html-resume \
               --name resumevisitor-fn \
               --src function-app.zip
+
+      - name: Verify function discovery
+        uses: azure/cli@v1
+        with:
+          azcliversion: '2.72.0'
+          inlineScript: |
+            az functionapp function list \
+              --resource-group html-resume \
+              --name resumevisitor-fn -o table
+            COUNT=$(az functionapp function list -g html-resume -n resumevisitor-fn --query "length(@)")
+            if [ "$COUNT" -lt 1 ]; then
+              echo "No functions discovered. Failing the job to surface the issue early." >&2
+              exit 1
+            fi
