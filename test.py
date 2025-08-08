@@ -23,21 +23,30 @@ class TestUpdateCounter(unittest.TestCase):
 
     def tearDown(self):
         self.patcher.stop()
-        del os.environ['COSMOS_CONNECTION_STRING']
+        if 'COSMOS_CONNECTION_STRING' in os.environ:
+            del os.environ['COSMOS_CONNECTION_STRING']
 
     def test_no_ip_header(self):
+        # Test when no IP headers are present - should use "unknown" as IP
         req = func.HttpRequest(
             'GET', '/api/updateCounter', headers={}, body=None)
+
+        # Mock that "unknown" IP doesn't exist, and counter doesn't exist
+        self.mock_table.get_entity.side_effect = ResourceNotFoundError(
+            'Not found')
+
         resp = function_app.main(req)
-        self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.get_body().decode(), "IP address not found")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.mimetype, 'application/json')
+        self.assertEqual(resp.get_body().decode(), '{"count": 1}')
 
     def test_existing_ip(self):
         ip = '1.2.3.4'
         # First get_entity(ip) returns something (means IP seen), then get_entity(counter) returns count
         self.mock_table.get_entity.side_effect = [
             {'PartitionKey': 'counter', 'RowKey': ip},  # dummy entity for IP
-            {'count': 5}                                # counter entity
+            {'count': 5, 'PartitionKey': 'counter',
+                'RowKey': 'visits'}  # counter entity
         ]
 
         req = func.HttpRequest('GET', '/api/updateCounter',
@@ -92,6 +101,25 @@ class TestUpdateCounter(unittest.TestCase):
             'RowKey': 'visits',
             'count': 11
         })
+
+    def test_options_request(self):
+        # Test CORS preflight request
+        req = func.HttpRequest(
+            'OPTIONS', '/api/updateCounter', headers={}, body=None)
+        resp = function_app.main(req)
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('Access-Control-Allow-Origin', dict(resp.headers))
+
+    def test_missing_connection_string(self):
+        # Test when connection string is missing
+        if 'COSMOS_CONNECTION_STRING' in os.environ:
+            del os.environ['COSMOS_CONNECTION_STRING']
+
+        req = func.HttpRequest('GET', '/api/updateCounter',
+                               headers={'x-forwarded-for': '1.2.3.4'}, body=None)
+        resp = function_app.main(req)
+        self.assertEqual(resp.status_code, 500)
+        self.assertIn('Configuration error', resp.get_body().decode())
 
 
 if __name__ == '__main__':
