@@ -1,3 +1,4 @@
 azure-functions
 azure-data-tables
 azure-identity
+azure-core
