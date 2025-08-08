@@ -41,11 +41,13 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
     # Connection string
     conn = os.environ.get("COSMOS_CONNECTION_STRING")
     if not conn:
-        # test_missing_connection_string expects the phrase "Configuration error"
         body = json.dumps(
             {"count": "N/A", "error": "Configuration error: COSMOS_CONNECTION_STRING missing"})
-        return func.HttpResponse(body, status_code=500, mimetype="application/json",
-                                 headers={"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"})
+        return func.HttpResponse(
+            body, status_code=500, mimetype="application/json",
+            headers={"Access-Control-Allow-Origin": "*",
+                     "Content-Type": "application/json"}
+        )
 
     table_name = os.environ.get("TABLE_NAME", "VisitorCounter")
     ip = _get_ip(req)
@@ -54,47 +56,54 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
         service = TableServiceClient.from_connection_string(conn)
         table = service.get_table_client(table_name)
 
-        # 1) Check if IP already recorded
+        # 1) IP already recorded?
         ip_seen = True
         try:
             table.get_entity(partition_key=PK_TOTAL, row_key=ip)
         except ResourceNotFoundError:
             ip_seen = False
 
-        # 2) Load current total (if any)
-        total = 0
+        # 2) Load total, track existence separately (don't prefill COUNT_KEY)
+        total_exists = True
         try:
             total_entity = table.get_entity(
                 partition_key=PK_TOTAL, row_key=RK_TOTAL)
-            total = int(total_entity.get(COUNT_KEY, 0))
+            total_value = int(total_entity.get(COUNT_KEY, 0))
         except ResourceNotFoundError:
-            total_entity = {"PartitionKey": PK_TOTAL,
-                            "RowKey": RK_TOTAL, COUNT_KEY: 0}
+            total_exists = False
+            total_entity = {"PartitionKey": PK_TOTAL, "RowKey": RK_TOTAL}
+            total_value = 0
 
-        # 3) If IP already seen → DO NOT increment; just return current total
+        # 3) If IP already seen → DO NOT increment; return current total
         if ip_seen:
             return func.HttpResponse(
-                json.dumps({"count": total}),
+                json.dumps({"count": total_value}),
                 status_code=200,
                 mimetype="application/json",
                 headers={"Access-Control-Allow-Origin": "*",
                          "Content-Type": "application/json"},
             )
 
-        # 4) New IP → create IP entity and increment total
-        table.create_entity({"PartitionKey": PK_TOTAL, "RowKey": ip})
+        # 4) First ever visit (no total & new IP) → two creates, return 1
+        if not total_exists and not ip_seen:
+            table.create_entity(
+                # create total
+                {"PartitionKey": PK_TOTAL, "RowKey": RK_TOTAL, COUNT_KEY: 1})
+            # create IP
+            table.create_entity({"PartitionKey": PK_TOTAL, "RowKey": ip})
+            return func.HttpResponse(
+                json.dumps({"count": 1}),
+                status_code=200,
+                mimetype="application/json",
+                headers={"Access-Control-Allow-Origin": "*",
+                         "Content-Type": "application/json"},
+            )
 
-        if total == 0 and COUNT_KEY not in total_entity:
-            # first ever counter create
-            total_entity = {"PartitionKey": PK_TOTAL,
-                            "RowKey": RK_TOTAL, COUNT_KEY: 1}
-            table.create_entity(total_entity)
-            new_total = 1
-        else:
-            new_total = total + 1
-            total_entity = {"PartitionKey": PK_TOTAL,
-                            "RowKey": RK_TOTAL, COUNT_KEY: new_total}
-            table.update_entity(total_entity)
+        # 5) Total exists but IP is new → create IP, update total (+1)
+        table.create_entity({"PartitionKey": PK_TOTAL, "RowKey": ip})
+        new_total = total_value + 1
+        table.update_entity(
+            {"PartitionKey": PK_TOTAL, "RowKey": RK_TOTAL, COUNT_KEY: new_total})
 
         return func.HttpResponse(
             json.dumps({"count": new_total}),
