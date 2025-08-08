@@ -9,6 +9,9 @@ from azure.core.exceptions import ResourceNotFoundError
 
 app = func.FunctionApp(http_auth_level=AuthLevel.ANONYMOUS)
 
+
+@app.function_name("updateCounter")
+@app.route(route="updateCounter", methods=["GET", "POST", "OPTIONS"])
 PK_TOTAL = "counter"
 RK_TOTAL = "visits"
 COUNT_KEY = "count"
@@ -22,8 +25,6 @@ def _get_ip(req: func.HttpRequest) -> str:
     return ip or "unknown"
 
 
-@app.function_name(name="updateCounter")
-@app.route(route="updateCounter", methods=["GET", "POST", "OPTIONS"])
 def update_counter(req: func.HttpRequest) -> func.HttpResponse:
     # CORS preflight
     if req.method == "OPTIONS":
