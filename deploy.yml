@@ -11,7 +11,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -50,8 +50,31 @@ jobs:
             --parameters @parameters.json \
             --only-show-errors
 
-    - name: Deploy to Azure Function App
-      uses: Azure/functions-action@v1
+    - name: Build function app
+      run: |
+        # Clean up any local settings that shouldn't be deployed
+        if [ -f "local.settings.json" ]; then
+          echo "Backing up local.settings.json"
+          cp local.settings.json local.settings.json.bak
+        fi
+        
+        # Ensure host.json is present
+        if [ ! -f "host.json" ]; then
+          echo "Error: host.json is missing"
+          exit 1
+        fi
+
+    # Use Azure CLI to deploy instead of functions-action
+    - name: Deploy Function App with Azure CLI
+      uses: azure/cli@v1
       with:
-        app-name: resumevisitor-fn  
-        package: '.'
+        azcliversion: '2.72.0'
+        inlineScript: |
+          # Zip the function app
+          zip -r function-app.zip . -x "*.git*" "*.github*" "*test*" "*local.settings.json*"
+          
+          # Deploy using Azure CLI
+          az functionapp deployment source config-zip \
+            --resource-group html-resume \
+            --name resumevisitor-fn \
+            --src function-app.zip

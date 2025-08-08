@@ -64,16 +64,15 @@ jobs:
           exit 1
         fi
 
-    # Use Azure CLI to deploy instead of functions-action
+    - name: Create function zip (on runner)
+      run: |
+        zip -r function-app.zip . -x "*.git*" "*.github*" "*test*" "*local.settings.json*"
+
     - name: Deploy Function App with Azure CLI
       uses: azure/cli@v1
       with:
         azcliversion: '2.72.0'
         inlineScript: |
-          # Zip the function app
-          zip -r function-app.zip . -x "*.git*" "*.github*" "*test*" "*local.settings.json*"
-          
-          # Deploy using Azure CLI
           az functionapp deployment source config-zip \
             --resource-group html-resume \
             --name resumevisitor-fn \
