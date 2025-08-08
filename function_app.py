@@ -9,21 +9,15 @@ from azure.core.exceptions import ResourceNotFoundError
 
 app = func.FunctionApp(http_auth_level=AuthLevel.ANONYMOUS)
 
-TABLE_ENV_NAME = "TABLE_NAME"
-DEFAULT_TABLE_NAME = "VisitorCounter"
-
-PARTITION_TOTAL = "Counter"
-ROW_TOTAL = "Total"
-
-PARTITION_IP = "IP"  # each IP stored as PK="IP", RK="<ip-address>"
+PK_TOTAL = "counter"
+RK_TOTAL = "visits"
+COUNT_KEY = "count"
 
 
 def _get_ip(req: func.HttpRequest) -> str:
-    # Try CDN / proxy header first
     ip = req.headers.get(
-        "x-forwarded-for", "") or req.headers.get("x-client-ip", "")
-    # In “x-forwarded-for: client, proxy1, proxy2” we take the first
-    if "," in ip:
+        "x-forwarded-for") or req.headers.get("x-client-ip") or ""
+    if ip and "," in ip:
         ip = ip.split(",")[0].strip()
     return ip or "unknown"
 
@@ -44,61 +38,63 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
             },
         )
 
+    # Connection string
+    conn = os.environ.get("COSMOS_CONNECTION_STRING")
+    if not conn:
+        # test_missing_connection_string expects the phrase "Configuration error"
+        body = json.dumps(
+            {"count": "N/A", "error": "Configuration error: COSMOS_CONNECTION_STRING missing"})
+        return func.HttpResponse(body, status_code=500, mimetype="application/json",
+                                 headers={"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"})
+
+    table_name = os.environ.get("TABLE_NAME", "VisitorCounter")
+    ip = _get_ip(req)
+
     try:
-        conn = os.environ.get("COSMOS_CONNECTION_STRING")
-        if not conn:
-            # Tests expect the phrase "Configuration error"
-            body = json.dumps(
-                {"count": "N/A", "error": "Configuration error: COSMOS_CONNECTION_STRING missing"})
+        service = TableServiceClient.from_connection_string(conn)
+        table = service.get_table_client(table_name)
+
+        # 1) Check if IP already recorded
+        ip_seen = True
+        try:
+            table.get_entity(partition_key=PK_TOTAL, row_key=ip)
+        except ResourceNotFoundError:
+            ip_seen = False
+
+        # 2) Load current total (if any)
+        total = 0
+        try:
+            total_entity = table.get_entity(
+                partition_key=PK_TOTAL, row_key=RK_TOTAL)
+            total = int(total_entity.get(COUNT_KEY, 0))
+        except ResourceNotFoundError:
+            total_entity = {"PartitionKey": PK_TOTAL,
+                            "RowKey": RK_TOTAL, COUNT_KEY: 0}
+
+        # 3) If IP already seen → DO NOT increment; just return current total
+        if ip_seen:
             return func.HttpResponse(
-                body, status_code=500, mimetype="application/json",
+                json.dumps({"count": total}),
+                status_code=200,
+                mimetype="application/json",
                 headers={"Access-Control-Allow-Origin": "*",
-                         "Content-Type": "application/json"}
+                         "Content-Type": "application/json"},
             )
 
-        table_name = os.environ.get(TABLE_ENV_NAME, DEFAULT_TABLE_NAME)
-        ip = _get_ip(req)
+        # 4) New IP → create IP entity and increment total
+        table.create_entity({"PartitionKey": PK_TOTAL, "RowKey": ip})
 
-        service = TableServiceClient.from_connection_string(conn)
-        # Ensure table exists
-        try:
-            table = service.get_table_client(table_name)
-            # touch to ensure existence; will raise if missing
-            _ = list(table.list_entities(results_per_page=1))
-        except ResourceNotFoundError:
-            service.create_table(table_name=table_name)
-            table = service.get_table_client(table_name=table_name)
-
-        # 1) Ensure TOTAL entity exists
-        created_total = False
-        try:
-            total = table.get_entity(
-                partition_key=PARTITION_TOTAL, row_key=ROW_TOTAL)
-            total_count = int(total.get("Count", 0))
-        except ResourceNotFoundError:
-            total = {"PartitionKey": PARTITION_TOTAL,
-                     "RowKey": ROW_TOTAL, "Count": 0}
-            table.create_entity(entity=total)
-            total_count = 0
-            created_total = True
-
-        # 2) Ensure IP entity exists
-        created_ip = False
-        try:
-            _ = table.get_entity(partition_key=PARTITION_IP, row_key=ip)
-        except ResourceNotFoundError:
-            ip_entity = {"PartitionKey": PARTITION_IP, "RowKey": ip}
-            table.create_entity(entity=ip_entity)
-            created_ip = True
-
-        # 3) Increment TOTAL and upsert
-        new_total = total_count + 1
-        total["Count"] = new_total
-        table.upsert_entity(entity=total)
-
-        # For debugging if you need it:
-        logging.info(
-            f"Incremented total from {total_count} to {new_total} (created_total={created_total}, created_ip={created_ip}, ip={ip})")
+        if total == 0 and COUNT_KEY not in total_entity:
+            # first ever counter create
+            total_entity = {"PartitionKey": PK_TOTAL,
+                            "RowKey": RK_TOTAL, COUNT_KEY: 1}
+            table.create_entity(total_entity)
+            new_total = 1
+        else:
+            new_total = total + 1
+            total_entity = {"PartitionKey": PK_TOTAL,
+                            "RowKey": RK_TOTAL, COUNT_KEY: new_total}
+            table.update_entity(total_entity)
 
         return func.HttpResponse(
             json.dumps({"count": new_total}),
@@ -108,7 +104,7 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
                      "Content-Type": "application/json"},
         )
 
-    except Exception as e:
+    except Exception:
         logging.exception("Function error")
         return func.HttpResponse(
             json.dumps({"count": "N/A", "error": "Server error"}),
