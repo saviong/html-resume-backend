@@ -35,7 +35,7 @@ class TestUpdateCounter(unittest.TestCase):
         self.mock_table.get_entity.side_effect = ResourceNotFoundError(
             'Not found')
 
-        resp = function_app.main(req)
+        resp = function_app.update_counter(req)  # Updated function name
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.mimetype, 'application/json')
         self.assertEqual(resp.get_body().decode(), '{"count": 1}')
@@ -51,7 +51,7 @@ class TestUpdateCounter(unittest.TestCase):
 
         req = func.HttpRequest('GET', '/api/updateCounter',
                                headers={'x-forwarded-for': ip}, body=None)
-        resp = function_app.main(req)
+        resp = function_app.update_counter(req)  # Updated function name
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.mimetype, 'application/json')
         self.assertEqual(resp.get_body().decode(), '{"count": 5}')
@@ -64,7 +64,7 @@ class TestUpdateCounter(unittest.TestCase):
 
         req = func.HttpRequest('GET', '/api/updateCounter',
                                headers={'x-forwarded-for': ip}, body=None)
-        resp = function_app.main(req)
+        resp = function_app.update_counter(req)  # Updated function name
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_body().decode(), '{"count": 1}')
 
@@ -86,7 +86,7 @@ class TestUpdateCounter(unittest.TestCase):
 
         req = func.HttpRequest('GET', '/api/updateCounter',
                                headers={'x-forwarded-for': ip}, body=None)
-        resp = function_app.main(req)
+        resp = function_app.update_counter(req)  # Updated function name
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_body().decode(), '{"count": 11}')
 
@@ -106,7 +106,7 @@ class TestUpdateCounter(unittest.TestCase):
         # Test CORS preflight request
         req = func.HttpRequest(
             'OPTIONS', '/api/updateCounter', headers={}, body=None)
-        resp = function_app.main(req)
+        resp = function_app.update_counter(req)  # Updated function name
         self.assertEqual(resp.status_code, 200)
         self.assertIn('Access-Control-Allow-Origin', dict(resp.headers))
 
@@ -117,7 +117,7 @@ class TestUpdateCounter(unittest.TestCase):
 
         req = func.HttpRequest('GET', '/api/updateCounter',
                                headers={'x-forwarded-for': '1.2.3.4'}, body=None)
-        resp = function_app.main(req)
+        resp = function_app.update_counter(req)  # Updated function name
         self.assertEqual(resp.status_code, 500)
         self.assertIn('Configuration error', resp.get_body().decode())
 

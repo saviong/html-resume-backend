@@ -11,7 +11,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v3
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -24,7 +24,7 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run tests
-      run: python -m unittest test.py -v
+      run: python test.py
 
     - name: Azure Login
       uses: azure/login@v1
@@ -50,32 +50,8 @@ jobs:
             --parameters @parameters.json \
             --only-show-errors
 
-    # Add explicit build step
-    - name: Build function app
-      run: |
-        # Clean up any local settings that shouldn't be deployed
-        if [ -f "local.settings.json" ]; then
-          echo "Backing up local.settings.json"
-          cp local.settings.json local.settings.json.bak
-        fi
-        
-        # Ensure host.json is present
-        if [ ! -f "host.json" ]; then
-          echo "Error: host.json is missing"
-          exit 1
-        fi
-
     - name: Deploy to Azure Function App
       uses: Azure/functions-action@v1
       with:
         app-name: resumevisitor-fn  
         package: '.'
-        publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-
-    # Alternative deployment if you prefer using resource group method
-    # - name: Deploy to Azure Function App (Alternative)
-    #   uses: Azure/functions-action@v1
-    #   with:
-    #     app-name: resumevisitor-fn
-    #     package: '.'
-    #     resource-group: html-resume
