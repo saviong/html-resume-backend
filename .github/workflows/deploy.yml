@@ -73,9 +73,29 @@ jobs:
             exit 1
           fi
 
-      - name: Create function zip (on runner)
+      - name: Vendor Python dependencies
         run: |
-          zip -r function-app.zip . -x "*.git*" "*.github*" "*test*" "*local.settings.json*"
+          python -m pip install --upgrade pip
+          mkdir -p .python_packages/lib/site-packages
+          pip install -r requirements.txt -t .python_packages/lib/site-packages
+          # sanity check that key packages are present
+          python - <<'PY'
+          import pkgutil, sys
+          need = ["azure", "azure.functions", "azure.data.tables"]
+          missing = [m for m in need if not pkgutil.find_loader(m)]
+          print("Missing modules:", missing)
+          sys.exit(1 if missing else 0)
+          PY
+
+      - name: Create function zip (zip contents, prune junk)
+        run: |
+          tmpdir=$(mktemp -d)
+          shopt -s dotglob
+          cp -r * "$tmpdir"/
+          cd "$tmpdir"
+          rm -rf __pycache__ */__pycache__ Archive .DS_Store || true
+          zip -r "$GITHUB_WORKSPACE/function-app.zip" . \
+            -x "*.git*" "*.github*" "*test*" "*local.settings.json*" "*.pyc" "*__pycache__/*" "Archive/*" ".DS_Store"
 
       - name: Inspect zip contents
         run: unzip -l function-app.zip | sed -n '1,200p'
