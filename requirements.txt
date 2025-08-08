@@ -3,5 +3,5 @@
 # Manually managing azure-functions-worker may cause unexpected issues
 
 azure-functions
-azure-data-tables
-azure-identity
+azure-data-tables>=12.6.0
+azure-core>=1.29.0
