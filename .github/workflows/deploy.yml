@@ -68,6 +68,10 @@ jobs:
       run: |
         zip -r function-app.zip . -x "*.git*" "*.github*" "*test*" "*local.settings.json*"
 
+    - name: Inspect zip contents
+      run: |
+        unzip -l function-app.zip | sed -n '1,200p'
+
     - name: Deploy Function App with Azure CLI
       uses: azure/cli@v1
       with:
