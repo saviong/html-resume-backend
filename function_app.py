@@ -50,7 +50,7 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
                      "Content-Type": "application/json"}
         )
 
-    table_name = os.environ.get("TABLE_NAME", "VisitorCounter")
+    table_name = os.environ.get("TABLE_NAME", "VisitCounter")
     ip = _get_ip(req)
 
     try:
