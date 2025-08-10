@@ -107,16 +107,39 @@ jobs:
               --name resumevisitor-fn \
               --src function-app.zip
 
-      - name: Verify function discovery
+      - name: Force run-from-package = 1 and restart
         uses: azure/cli@v1
         with:
           azcliversion: '2.72.0'
           inlineScript: |
-            az functionapp function list \
+            az functionapp config appsettings set \
               --resource-group html-resume \
-              --name resumevisitor-fn -o table
-            COUNT=$(az functionapp function list -g html-resume -n resumevisitor-fn --query "length(@)")
-            if [ "$COUNT" -lt 1 ]; then
-              echo "No functions discovered. Failing the job to surface the issue early." >&2
-              exit 1
-            fi
+              --name resumevisitor-fn \
+              --settings WEBSITE_RUN_FROM_PACKAGE=1
+            az functionapp restart -g html-resume -n resumevisitor-fn
+
+      - name: Verify function discovery (retry while host indexes)
+        uses: azure/cli@v1
+        with:
+          azcliversion: '2.72.0'
+          inlineScript: |
+            HN=$(az functionapp show -g html-resume -n resumevisitor-fn --query defaultHostName -o tsv)
+
+            echo "Warming up host at https://$HN/ ..."
+            # Warm-up hits (don’t fail the job if they 404/401)
+            curl -sS -m 10 "https://$HN/" >/dev/null || true
+            curl -sS -m 10 "https://$HN/admin/host/status" >/dev/null || true
+
+            # Retry for up to ~2 minutes (24 x 5s) waiting for indexing
+            for i in {1..24}; do
+              COUNT=$(az functionapp function list -g html-resume -n resumevisitor-fn --query "length(@)")
+              echo "Discovery attempt $i: functions found = $COUNT"
+              if [ "$COUNT" -ge 1 ]; then
+                az functionapp function list -g html-resume -n resumevisitor-fn -o table
+                exit 0
+              fi
+              sleep 5
+            done
+
+            echo "No functions discovered after waiting. Failing the job." >&2
+            exit 1
