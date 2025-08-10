@@ -3,81 +3,120 @@ name: Deploy Azure Function App
 on:
   push:
     branches:
-      - master  # or 'main' if you're using 'main'
+      - master
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'   # align with Azure Functions runtime
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-    - name: Run tests
-      run: python -m unittest test.py -v
+      - name: Run tests
+        run: python -m unittest test.py -v
 
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}   # using your service principal JSON
 
-    - name: Deploy ARM Template (secure)
-      uses: azure/cli@v1
-      with:
-        azcliversion: '2.72.0'
-        inlineScript: |
-          # Validate template (no overrides)
-          az deployment group validate \
-            --resource-group html-resume \
-            --template-file template.json \
-            --parameters @parameters.json \
-            --only-show-errors
+      - name: Deploy ARM Template (secure)
+        uses: azure/cli@v1
+        with:
+          azcliversion: '2.72.0'
+          inlineScript: |
+            az deployment group validate \
+              --resource-group html-resume \
+              --template-file template.json \
+              --parameters @parameters.json \
+              --only-show-errors
 
-          # Deploy template
-          az deployment group create \
-            --resource-group html-resume \
-            --template-file template.json \
-            --parameters @parameters.json \
-            --only-show-errors
+            az deployment group create \
+              --resource-group html-resume \
+              --template-file template.json \
+              --parameters @parameters.json \
+              --only-show-errors
 
-    - name: Build function app
-      run: |
-        # Clean up any local settings that shouldn't be deployed
-        if [ -f "local.settings.json" ]; then
-          echo "Backing up local.settings.json"
-          cp local.settings.json local.settings.json.bak
-        fi
-        
-        # Ensure host.json is present
-        if [ ! -f "host.json" ]; then
-          echo "Error: host.json is missing"
-          exit 1
-        fi
+      - name: Ensure app settings for remote build + v2 indexing
+        uses: azure/cli@v1
+        with:
+          azcliversion: '2.72.0'
+          inlineScript: |
+            az functionapp config appsettings set \
+              --resource-group html-resume \
+              --name resumevisitor-fn \
+              --settings SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+                         ENABLE_ORYX_BUILD=true \
+                         AzureWebJobsFeatureFlags=EnableWorkerIndexing \
+                         WEBSITE_RUN_FROM_PACKAGE=1 \
+                         FUNCTIONS_WORKER_RUNTIME=python
 
-    - name: Create function zip (on runner)
-      run: |
-        zip -r function-app.zip . -x "*.git*" "*.github*" "*test*" "*local.settings.json*"
+      - name: Build function app
+        run: |
+          if [ -f "local.settings.json" ]; then
+            echo "Backing up local.settings.json"
+            cp local.settings.json local.settings.json.bak
+          fi
+          if [ ! -f "host.json" ]; then
+            echo "Error: host.json is missing"
+            exit 1
+          fi
 
-    - name: Inspect zip contents
-      run: |
-        unzip -l function-app.zip | sed -n '1,200p'
+      - name: Vendor Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          mkdir -p .python_packages/lib/site-packages
+          pip install -r requirements.txt -t .python_packages/lib/site-packages
+          # sanity check concrete modules (namespace-safe)
+          python - <<'PY'
+          import importlib, sys
+          need = ["azure.functions", "azure.data.tables"]
+          missing = []
 
-    - name: Deploy Function App with Azure CLI
-      uses: azure/cli@v1
-      with:
-        azcliversion: '2.72.0'
-        inlineScript: |
-          az functionapp deployment source config-zip \
-            --resource-group html-resume \
-            --name resumevisitor-fn \
-            --src function-app.zip
+      - name: Create function zip (zip contents, prune junk)
+        run: |
+          tmpdir=$(mktemp -d)
+          shopt -s dotglob
+          cp -r * "$tmpdir"/
+          cd "$tmpdir"
+          rm -rf __pycache__ */__pycache__ Archive .DS_Store || true
+          zip -r "$GITHUB_WORKSPACE/function-app.zip" . \
+            -x "*.git*" "*.github*" "*test*" "*local.settings.json*" "*.pyc" "*__pycache__/*" "Archive/*" ".DS_Store"
+
+      - name: Inspect zip contents
+        run: unzip -l function-app.zip | sed -n '1,200p'
+
+      - name: Deploy Function App (config-zip)
+        uses: azure/cli@v1
+        with:
+          azcliversion: '2.72.0'
+          inlineScript: |
+            az functionapp deployment source config-zip \
+              --resource-group html-resume \
+              --name resumevisitor-fn \
+              --src function-app.zip
+
+      - name: Verify function discovery
+        uses: azure/cli@v1
+        with:
+          azcliversion: '2.72.0'
+          inlineScript: |
+            az functionapp function list \
+              --resource-group html-resume \
+              --name resumevisitor-fn -o table
+            COUNT=$(az functionapp function list -g html-resume -n resumevisitor-fn --query "length(@)")
+            if [ "$COUNT" -lt 1 ]; then
+              echo "No functions discovered. Failing the job to surface the issue early." >&2
+              exit 1
+            fi

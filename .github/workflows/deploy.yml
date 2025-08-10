@@ -78,21 +78,21 @@ jobs:
           python -m pip install --upgrade pip
           mkdir -p .python_packages/lib/site-packages
           pip install -r requirements.txt -t .python_packages/lib/site-packages
-          # sanity check concrete modules (namespace-safe)
-          python - <<'PY'
-          import importlib, sys
-          need = ["azure.functions", "azure.data.tables"]
-          missing = []
 
-      - name: Create function zip (zip contents, prune junk)
+      - name: Create function zip (stage minimal files, prune junk)
         run: |
-          tmpdir=$(mktemp -d)
-          shopt -s dotglob
-          cp -r * "$tmpdir"/
-          cd "$tmpdir"
-          rm -rf __pycache__ */__pycache__ Archive .DS_Store || true
-          zip -r "$GITHUB_WORKSPACE/function-app.zip" . \
-            -x "*.git*" "*.github*" "*test*" "*local.settings.json*" "*.pyc" "*__pycache__/*" "Archive/*" ".DS_Store"
+          build=$(mktemp -d)
+          # stage only what Azure needs at the ZIP ROOT
+          cp host.json "$build"/
+          cp requirements.txt "$build"/
+          cp function_app.py "$build"/
+          # include vendored deps
+          mkdir -p "$build"/.python_packages/lib/site-packages
+          rsync -a .python_packages/lib/site-packages/ "$build"/.python_packages/lib/site-packages/
+
+          # zip it (exclude junk)
+          (cd "$build" && zip -r "$GITHUB_WORKSPACE/function-app.zip" . \
+            -x "*.git*" "*.github*" "*test*" "*local.settings.json*" "*.pyc" "*__pycache__/*")
 
       - name: Inspect zip contents
         run: unzip -l function-app.zip | sed -n '1,200p'
