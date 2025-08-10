@@ -78,21 +78,21 @@ jobs:
           python -m pip install --upgrade pip
           mkdir -p .python_packages/lib/site-packages
           pip install -r requirements.txt -t .python_packages/lib/site-packages
+          # sanity check concrete modules (namespace-safe)
+          python - <<'PY'
+          import importlib, sys
+          need = ["azure.functions", "azure.data.tables"]
+          missing = []
 
-      - name: Create function zip (stage minimal files, prune junk)
+      - name: Create function zip (zip contents, prune junk)
         run: |
-          build=$(mktemp -d)
-          # stage only what Azure needs at the ZIP ROOT
-          cp host.json "$build"/
-          cp requirements.txt "$build"/
-          cp function_app.py "$build"/
-          # include vendored deps
-          mkdir -p "$build"/.python_packages/lib/site-packages
-          rsync -a .python_packages/lib/site-packages/ "$build"/.python_packages/lib/site-packages/
-
-          # zip it (exclude junk)
-          (cd "$build" && zip -r "$GITHUB_WORKSPACE/function-app.zip" . \
-            -x "*.git*" "*.github*" "*test*" "*local.settings.json*" "*.pyc" "*__pycache__/*")
+          tmpdir=$(mktemp -d)
+          shopt -s dotglob
+          cp -r * "$tmpdir"/
+          cd "$tmpdir"
+          rm -rf __pycache__ */__pycache__ Archive .DS_Store || true
+          zip -r "$GITHUB_WORKSPACE/function-app.zip" . \
+            -x "*.git*" "*.github*" "*test*" "*local.settings.json*" "*.pyc" "*__pycache__/*" "Archive/*" ".DS_Store"
 
       - name: Inspect zip contents
         run: unzip -l function-app.zip | sed -n '1,200p'
@@ -107,39 +107,16 @@ jobs:
               --name resumevisitor-fn \
               --src function-app.zip
 
-      - name: Force run-from-package = 1 and restart
+      - name: Verify function discovery
         uses: azure/cli@v1
         with:
           azcliversion: '2.72.0'
           inlineScript: |
-            az functionapp config appsettings set \
+            az functionapp function list \
               --resource-group html-resume \
-              --name resumevisitor-fn \
-              --settings WEBSITE_RUN_FROM_PACKAGE=1
-            az functionapp restart -g html-resume -n resumevisitor-fn
-
-      - name: Verify function discovery (retry while host indexes)
-        uses: azure/cli@v1
-        with:
-          azcliversion: '2.72.0'
-          inlineScript: |
-            HN=$(az functionapp show -g html-resume -n resumevisitor-fn --query defaultHostName -o tsv)
-
-            echo "Warming up host at https://$HN/ ..."
-            # Warm-up hits (don’t fail the job if they 404/401)
-            curl -sS -m 10 "https://$HN/" >/dev/null || true
-            curl -sS -m 10 "https://$HN/admin/host/status" >/dev/null || true
-
-            # Retry for up to ~2 minutes (24 x 5s) waiting for indexing
-            for i in {1..24}; do
-              COUNT=$(az functionapp function list -g html-resume -n resumevisitor-fn --query "length(@)")
-              echo "Discovery attempt $i: functions found = $COUNT"
-              if [ "$COUNT" -ge 1 ]; then
-                az functionapp function list -g html-resume -n resumevisitor-fn -o table
-                exit 0
-              fi
-              sleep 5
-            done
-
-            echo "No functions discovered after waiting. Failing the job." >&2
-            exit 1
+              --name resumevisitor-fn -o table
+            COUNT=$(az functionapp function list -g html-resume -n resumevisitor-fn --query "length(@)")
+            if [ "$COUNT" -lt 1 ]; then
+              echo "No functions discovered. Failing the job to surface the issue early." >&2
+              exit 1
+            fi
