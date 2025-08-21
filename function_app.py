@@ -6,11 +6,12 @@ from datetime import datetime, timedelta, timezone
 import azure.functions as func
 from azure.functions import AuthLevel
 from azure.data.tables import TableServiceClient, UpdateMode
-from azure.core.exceptions import ResourceNotFoundError
+# Import the specific exception for the race condition check
+from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
 
 app = func.FunctionApp(http_auth_level=AuthLevel.ANONYMOUS)
 
-# Define constants for table storage
+# Constants
 PK_TOTAL = "counter"
 RK_TOTAL = "visits"
 PK_VISITOR = "visitor"
@@ -30,9 +31,8 @@ def _get_ip(req: func.HttpRequest) -> str:
 def update_counter(req: func.HttpRequest) -> func.HttpResponse:
     """
     Increments a visitor counter, but only counts a unique IP address
-    once per hour.
+    once per hour. Resilient to race conditions.
     """
-    # --- THIS IS THE KEY CHANGE: Define headers to disable caching ---
     headers = {
         "Access-Control-Allow-Origin": "*",
         "Content-Type": "application/json",
@@ -40,7 +40,6 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
     }
 
     if req.method == "OPTIONS":
-        # Add CORS headers for preflight request
         options_headers = headers.copy()
         options_headers.update({
             "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
@@ -62,49 +61,50 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
         table_service = TableServiceClient.from_connection_string(conn_str)
         table_client = table_service.get_table_client(table_name)
 
+        should_increment = False
+        # --- REWRITTEN LOGIC TO PREVENT RACE CONDITION ---
+        try:
+            # 1. Atomically try to create the IP record. This is the gatekeeper.
+            visitor_entity = {"PartitionKey": PK_VISITOR, "RowKey": ip, VISIT_TIME_KEY: now.isoformat()}
+            table_client.create_entity(visitor_entity)
+            # 2. If creation succeeds, we are the first, so we should increment.
+            should_increment = True
+        except ResourceExistsError:
+            # 3. If the IP already exists, we check if it's been over an hour.
+            visitor_entity = table_client.get_entity(partition_key=PK_VISITOR, row_key=ip)
+            last_visit = datetime.fromisoformat(visitor_entity.get(VISIT_TIME_KEY))
+            if now - last_visit >= timedelta(hours=1):
+                # 4. If it's old, update the timestamp and decide to increment.
+                visitor_entity[VISIT_TIME_KEY] = now.isoformat()
+                table_client.update_entity(visitor_entity, mode=UpdateMode.REPLACE)
+                should_increment = True
+            else:
+                # 5. If it's recent, we do not increment.
+                should_increment = False
+        
+        # --- COUNTER LOGIC ---
+        # Load the current total count
         try:
             total_entity = table_client.get_entity(partition_key=PK_TOTAL, row_key=RK_TOTAL)
             total_value = int(total_entity.get(COUNT_KEY, 0))
         except ResourceNotFoundError:
             total_entity = None
             total_value = 0
-
-        try:
-            visitor_entity = table_client.get_entity(partition_key=PK_VISITOR, row_key=ip)
-            last_visit_str = visitor_entity.get(VISIT_TIME_KEY)
             
-            if last_visit_str:
-                last_visit = datetime.fromisoformat(last_visit_str)
-                if now - last_visit < timedelta(hours=1):
-                    # Use the standard headers on all return paths
-                    return func.HttpResponse(json.dumps({"count": total_value}), status_code=200, headers=headers)
-            
-        except ResourceNotFoundError:
-            visitor_entity = None
-        
-        new_total = total_value + 1
-
-        if total_entity:
-            total_entity[COUNT_KEY] = new_total
-            table_client.update_entity(total_entity, mode=UpdateMode.REPLACE)
+        # Only increment if the logic above decided we should
+        if should_increment:
+            new_total = total_value + 1
+            if total_entity:
+                total_entity[COUNT_KEY] = new_total
+                table_client.update_entity(total_entity, mode=UpdateMode.REPLACE)
+            else:
+                table_client.create_entity({"PartitionKey": PK_TOTAL, "RowKey": RK_TOTAL, COUNT_KEY: new_total})
+            return func.HttpResponse(json.dumps({"count": new_total}), status_code=200, headers=headers)
         else:
-            table_client.create_entity({"PartitionKey": PK_TOTAL, "RowKey": RK_TOTAL, COUNT_KEY: 1})
-
-        visitor_payload = {
-            "PartitionKey": PK_VISITOR,
-            "RowKey": ip,
-            VISIT_TIME_KEY: now.isoformat()
-        }
-        if visitor_entity:
-            table_client.update_entity(visitor_payload, mode=UpdateMode.REPLACE)
-        else:
-            table_client.create_entity(visitor_payload)
-
-        # Use the standard headers on all return paths
-        return func.HttpResponse(json.dumps({"count": new_total}), status_code=200, headers=headers)
+            # If we are not incrementing, just return the current total.
+            return func.HttpResponse(json.dumps({"count": total_value}), status_code=200, headers=headers)
 
     except Exception as e:
         logging.exception(f"Function error: {e}")
         error_body = json.dumps({"count": "N/A", "error": "Server error"})
-        # Use the standard headers on all return paths
         return func.HttpResponse(error_body, status_code=500, headers=headers)
