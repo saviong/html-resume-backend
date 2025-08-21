@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-from datetime import datetime, timedelta, timezone # <-- IMPORT timezone
+from datetime import datetime, timedelta, timezone
 
 import azure.functions as func
 from azure.functions import AuthLevel
@@ -32,12 +32,23 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
     Increments a visitor counter, but only counts a unique IP address
     once per hour.
     """
-    if req.method == "OPTIONS":
-        return func.HttpResponse(
-            "", status_code=200, headers={"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Max-Age": "86400"})
-    
-    headers = {"Access-Control-Allow-Origin": "*", "Content-Type": "application/json"}
+    # --- THIS IS THE KEY CHANGE: Define headers to disable caching ---
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+    }
 
+    if req.method == "OPTIONS":
+        # Add CORS headers for preflight request
+        options_headers = headers.copy()
+        options_headers.update({
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type",
+            "Access-Control-Max-Age": "86400"
+        })
+        return func.HttpResponse("", status_code=200, headers=options_headers)
+    
     conn_str = os.environ.get("COSMOS_CONNECTION_STRING")
     if not conn_str:
         body = json.dumps({"count": "N/A", "error": "Configuration error"})
@@ -45,7 +56,6 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
 
     table_name = os.environ.get("TABLE_NAME", "VisitorCounter")
     ip = _get_ip(req)
-    # Use a timezone-aware datetime object
     now = datetime.now(timezone.utc)
 
     try:
@@ -66,6 +76,7 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
             if last_visit_str:
                 last_visit = datetime.fromisoformat(last_visit_str)
                 if now - last_visit < timedelta(hours=1):
+                    # Use the standard headers on all return paths
                     return func.HttpResponse(json.dumps({"count": total_value}), status_code=200, headers=headers)
             
         except ResourceNotFoundError:
@@ -89,9 +100,11 @@ def update_counter(req: func.HttpRequest) -> func.HttpResponse:
         else:
             table_client.create_entity(visitor_payload)
 
+        # Use the standard headers on all return paths
         return func.HttpResponse(json.dumps({"count": new_total}), status_code=200, headers=headers)
 
     except Exception as e:
         logging.exception(f"Function error: {e}")
         error_body = json.dumps({"count": "N/A", "error": "Server error"})
+        # Use the standard headers on all return paths
         return func.HttpResponse(error_body, status_code=500, headers=headers)
