@@ -21,7 +21,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-      
+
       - name: 'Install local dependencies & verify requirements.txt'
         run: |
           python -m pip install --upgrade pip
@@ -47,10 +47,6 @@ jobs:
       - name: 'Zip artifact for deployment'
         run: zip -r function-app.zip . -x "*.git*" "*.github*" "local.settings.json" "*.venv/*" "__pycache__/*"
 
-      - name: 'DIAGNOSTIC: Inspect Zip Contents'
-        run: |
-          unzip -l function-app.zip
-          
       - name: 'Deploy to Azure Functions'
         uses: Azure/functions-action@v1
         with:
@@ -61,8 +57,8 @@ jobs:
         uses: azure/cli@v1
         with:
           inlineScript: |
-            echo "Waiting 60 seconds for function app to restart and index..."
-            sleep 60
+            echo "Waiting 90 seconds for function app to restart and index..."
+            sleep 90
             echo "Listing functions in ${{ env.AZURE_FUNCTIONAPP_NAME }}..."
             az functionapp function list \
               --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
@@ -70,9 +66,9 @@ jobs:
             COUNT=$(az functionapp function list -g ${{ env.RESOURCE_GROUP_NAME }} -n ${{ env.AZURE_FUNCTIONAPP_NAME }} --query "length(@)")
             if [ "$COUNT" -lt 1 ]; then
               echo "Error: No functions were discovered after deployment." >&2
-              # Add a command to check the deployment logs for build failures
-              echo "Checking deployment logs for build errors..."
-              az functionapp log deployment show --resource-group ${{ env.RESOURCE_GROUP_NAME }} --name ${{ env.AZURE_FUNCTIONAPP_NAME }} --query "[0].log_time, [0].message" -o tsv || echo "Could not retrieve deployment logs."
+              echo "Checking latest deployment log for build errors..."
+              # Corrected command to fetch the most recent deployment log
+              az functionapp log deployment show --resource-group ${{ env.RESOURCE_GROUP_NAME }} --name ${{ env.AZURE_FUNCTIONAPP_NAME }} --query "[0].message" -o tsv || echo "Could not retrieve deployment logs via CLI."
               exit 1
             fi
             echo "Success: $COUNT function(s) discovered."
