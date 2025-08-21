@@ -1,3 +1,4 @@
+import os
 import unittest
 from unittest.mock import patch, MagicMock, ANY
 from datetime import datetime, timedelta
@@ -7,7 +8,10 @@ import function_app
 
 class TestUpdateCounter(unittest.TestCase):
     def setUp(self):
-        """Set up mocks for each test."""
+        """Set up mocks and environment variables for each test."""
+        os.environ['COSMOS_CONNECTION_STRING'] = 'DefaultEndpointsProtocol=https;AccountName=test;AccountKey=test;EndpointSuffix=core.windows.net'
+
+        # Set up the mock for the Azure Table Service Client
         self.patcher = patch('function_app.TableServiceClient')
         mock_TableServiceClient = self.patcher.start()
         mock_service = MagicMock()
@@ -16,8 +20,10 @@ class TestUpdateCounter(unittest.TestCase):
         mock_service.get_table_client.return_value = self.mock_table
 
     def tearDown(self):
-        """Clean up patches after each test."""
+        """Clean up patches and environment variables after each test."""
         self.patcher.stop()
+        # Clean up the environment variable
+        del os.environ['COSMOS_CONNECTION_STRING']
 
     def test_new_visitor_with_existing_counter(self):
         """Tests a new visitor IP when the main counter already exists."""
@@ -44,6 +50,7 @@ class TestUpdateCounter(unittest.TestCase):
         """Tests that a visit from an IP seen within the last hour does NOT increment the counter."""
         ip = '10.0.0.1'
         recent_time = (datetime.utcnow() - timedelta(minutes=30)).isoformat() + "Z"
+        
         def get_entity_side_effect(partition_key, row_key):
             if partition_key == function_app.PK_TOTAL:
                 return {'count': 5}
@@ -58,3 +65,6 @@ class TestUpdateCounter(unittest.TestCase):
         self.assertEqual(resp.get_body().decode(), '{"count": 5}')
         self.mock_table.create_entity.assert_not_called()
         self.mock_table.update_entity.assert_not_called()
+
+if __name__ == '__main__':
+    unittest.main()
