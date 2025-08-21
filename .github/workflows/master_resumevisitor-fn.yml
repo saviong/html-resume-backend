@@ -50,6 +50,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt --target=".python_packages/lib/site-packages"
 
+      - name: Verify list
+        run: |
+          echo "--- VERIFYING INSTALLED PACKAGES ---"
+          pip list
+          
       - name: "Debug: List Installed Packages"
         run: |
           echo "--- PACKAGES INSTALLED IN THE ENVIRONMENT ---"
