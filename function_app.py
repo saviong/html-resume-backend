@@ -9,7 +9,7 @@ from azure.core.exceptions import ResourceNotFoundError
 
 app = func.FunctionApp(http_auth_level=AuthLevel.ANONYMOUS)
 
-#trigger a new deployment
+#trigger deployment
 
 PK_TOTAL = "counter"
 RK_TOTAL = "visits"
