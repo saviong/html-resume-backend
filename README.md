@@ -93,5 +93,5 @@ curl http://localhost:7071/api/updateCounter
 ## 🚀 Infrastructure diagram
 
 <p align="center">
-  <img src="docs/htmlresume.drawio.png" alt="Infrastructure Diagram" width="800">
+  <img src="https://github.com/saviong/html-resume-frontend/blob/master/docs/htmlresume.drawio.png?raw=true" alt="Infrastructure Diagram" width="800">
 </p>
