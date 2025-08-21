@@ -3,7 +3,6 @@ import unittest
 from unittest.mock import patch, MagicMock, ANY
 from datetime import datetime, timedelta, timezone
 import azure.functions as func
-# Import ResourceExistsError to simulate the database correctly
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
 import function_app
 
@@ -59,4 +58,20 @@ class TestUpdateCounter(unittest.TestCase):
                 return {'lastVisit': recent_time} # The existing visitor record
             if partition_key == function_app.PK_TOTAL:
                 return {'count': 5} # The current total
-            raise ResourceNotFoundError("Entity not found in mock
+            # This is the line with the typo
+            raise ResourceNotFoundError("Entity not found in mock")
+
+        self.mock_table.get_entity.side_effect = get_entity_side_effect
+
+        req = func.HttpRequest('GET', '/api/updateCounter', headers={'x-forwarded-for': ip}, body=None)
+        resp = function_app.update_counter(req)
+
+        # Assert that the function correctly returned 200 OK and the UNCHANGED count of 5
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_body().decode(), '{"count": 5}')
+        # Assert that no NEW entity was created and the total was NOT updated.
+        self.mock_table.update_entity.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()
