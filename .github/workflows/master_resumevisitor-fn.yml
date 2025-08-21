@@ -26,10 +26,34 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: "Debug: Verify Environment and File Presence"
+        run: |
+          echo "--- 1. VERIFYING WORKING DIRECTORY ---"
+          pwd
+          echo ""
+          echo "--- 2. VERIFYING FILE LISTING ---"
+          ls -la
+          echo ""
+          echo "--- 3. VERIFYING PYTHON AND PIP LOCATION ---"
+          which python
+          which pip
+          echo ""
+          echo "--- 4. VERIFYING PYTHON AND PIP VERSIONS ---"
+          python --version
+          pip --version
+          echo ""
+          echo "--- 5. VERIFYING requirements.txt CONTENT ---"
+          cat requirements.txt
+
       - name: 'Install dependencies into a local folder'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt --target=".python_packages/lib/site-packages"
+
+      - name: "Debug: List Installed Packages"
+        run: |
+          echo "--- PACKAGES INSTALLED IN THE ENVIRONMENT ---"
+          pip list
 
       - name: Run tests
         run: |
