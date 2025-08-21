@@ -60,15 +60,12 @@ jobs:
             echo "Waiting 90 seconds for function app to restart and index..."
             sleep 90
             echo "Listing functions in ${{ env.AZURE_FUNCTIONAPP_NAME }}..."
-            az functionapp function list \
-              --resource-group ${{ env.RESOURCE_GROUP_NAME }} \
-              --name ${{ env.AZURE_FUNCTIONAPP_NAME }} -o table
             COUNT=$(az functionapp function list -g ${{ env.RESOURCE_GROUP_NAME }} -n ${{ env.AZURE_FUNCTIONAPP_NAME }} --query "length(@)")
             if [ "$COUNT" -lt 1 ]; then
               echo "Error: No functions were discovered after deployment." >&2
               echo "Checking latest deployment log for build errors..."
-              # Corrected command to fetch the most recent deployment log
-              az functionapp log deployment show --resource-group ${{ env.RESOURCE_GROUP_NAME }} --name ${{ env.AZURE_FUNCTIONAPP_NAME }} --query "[0].message" -o tsv || echo "Could not retrieve deployment logs via CLI."
+              # Simplest possible command to get deployment logs
+              az functionapp log deployment show --resource-group ${{ env.RESOURCE_GROUP_NAME }} --name ${{ env.AZURE_FUNCTIONAPP_NAME }} || echo "Could not retrieve deployment logs via CLI."
               exit 1
             fi
             echo "Success: $COUNT function(s) discovered."
