@@ -26,42 +26,33 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: "Debug: Verify Environment and File Presence"
-        run: |
-          echo "--- 1. VERIFYING WORKING DIRECTORY ---"
-          pwd
-          echo ""
-          echo "--- 2. VERIFYING FILE LISTING ---"
-          ls -la
-          echo ""
-          echo "--- 3. VERIFYING PYTHON AND PIP LOCATION ---"
-          which python
-          which pip
-          echo ""
-          echo "--- 4. VERIFYING PYTHON AND PIP VERSIONS ---"
-          python --version
-          pip --version
-          echo ""
-          echo "--- 5. VERIFYING requirements.txt CONTENT ---"
-          cat requirements.txt
-
       - name: 'Install dependencies into a local folder'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt --target=".python_packages/lib/site-packages"
 
-      - name: Verify list
+      - name: Forceful Install and Test
         run: |
-          echo "--- VERIFYING INSTALLED PACKAGES ---"
-          pip list
-          
-      - name: "Debug: List Installed Packages"
-        run: |
-          echo "--- PACKAGES INSTALLED IN THE ENVIRONMENT ---"
+          # Step 1: Temporarily simplify requirements to isolate the issue
+          echo "--- 1. Using simplified requirements.txt for this test ---"
+          echo "azure-functions" > requirements.txt
+          cat requirements.txt
+
+          # Step 2: Run a verbose, no-cache installation
+          echo "--- 2. Attempting verbose and forceful package installation ---"
+          python -m pip install --no-cache-dir --verbose -r requirements.txt
+
+          # Step 3: Directly check if the package files were created in the filesystem
+          # This path comes from your diagnostic logs. This command will fail if the installation failed.
+          echo "--- 3. Verifying installation by checking for package files ---"
+          ls -laR /opt/hostedtoolcache/Python/3.11.13/x64/lib/python3.11/site-packages/azure
+
+          # Step 4: Verify again with pip list
+          echo "--- 4. Verifying with pip list ---"
           pip list
 
-      - name: Run tests
-        run: |
+          # Step 5: Run the tests
+          echo "--- 5. Running unit tests ---"
           python -m unittest test.py -v
 
       - name: 'Deploy to Azure Functions'
