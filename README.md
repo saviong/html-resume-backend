@@ -93,21 +93,59 @@ Set on the **Static Web App** (Configuration → Application settings):
 
 ---
 
-## 🛠️ Deployment
+## 🛠️ CI/CD
 
-This repo does not deploy itself. The frontend workflow
-([`deploy-swa.yml`](https://github.com/saviong/html-resume-frontend/blob/master/.github/workflows/deploy-swa.yml))
-checks this repo out into `api/` and deploys it with the site.
+**A push to `master` here deploys to Azure automatically.**
+
+Static Web Apps publishes the static content and the managed API as one atomic
+upload, so this repo cannot deploy in isolation — the site has to be republished
+with it. Rather than duplicate that logic, `ci.yml` calls the frontend repo's
+reusable workflow, which checks both repos out, tests this code, and publishes
+them together.
 
 ```mermaid
-flowchart LR
-    A["push to master<br/><i>html-resume-backend</i>"] --> B["CI: unit tests only<br/><i>no deploy</i>"]
-    C["frontend workflow"] -->|"checks out this repo<br/>into api/"| D["static-web-apps-deploy"]
-    D --> E["Managed Functions<br/><i>/api</i>"]
+flowchart TD
+    PB["push to master<br/><b>html-resume-backend</b>"]
+    PR["pull request"]
+    T0["test job<br/><i>unit tests, no deploy</i>"]
+
+    subgraph WF["html-resume-frontend · deploy-swa.yml"]
+        CO["Check out both repos"]
+        T["Run these unit tests<br/><i>deploy gate</i>"]
+        ST["Stage _site/ + api/"]
+        G["Guard: reject .git & secrets"]
+        DEP["Azure/static-web-apps-deploy"]
+        CO --> T --> ST --> G --> DEP
+    end
+
+    API["Managed Functions<br/><i>mycv.saviong.com/api</i>"]
+
+    PR --> T0
+    PB -->|"workflow_call<br/><i>no PAT: both repos public</i>"| CO
+    DEP --> API
+
+    style WF stroke-dasharray: 4 3
 ```
 
-After merging here, run **Deploy to Azure Static Web Apps** in the frontend repo to
-publish the change.
+```yaml
+# .github/workflows/ci.yml
+deploy:
+  uses: saviong/html-resume-frontend/.github/workflows/deploy-swa.yml@master
+  secrets:
+    AZURE_STATIC_WEB_APPS_API_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+```
+
+Pull requests run the tests and deploy nothing. On `master` the separate `test` job
+is skipped, because the deploy runs the same tests as its gate.
+
+### Required secret
+
+| Secret | Purpose |
+|--------|---------|
+| `AZURE_STATIC_WEB_APPS_API_TOKEN` | Passed through to the reusable workflow |
+
+> A push here republishes `master` of the frontend too. If you have unpushed
+> frontend work, it will not be included — that is inherent to the atomic upload.
 
 > If `/api/*` ever returns a bare `404` with no error anywhere, the usual cause is that
 > `requirements.txt` was not installed: the Python worker cannot import its dependencies,
