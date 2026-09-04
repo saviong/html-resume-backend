@@ -131,6 +131,33 @@ class TestUpdateCounter(unittest.TestCase):
         self.assertEqual(resp.get_body().decode(), '{"count": 7}')
         self.assertEqual(self.mock_table.update_entity.call_count, 2)
 
+    def test_client_cannot_spoof_its_ip_via_x_forwarded_for(self):
+        """
+        The leftmost x-forwarded-for entry is caller-supplied. Reading it let anyone
+        inflate the counter by setting the header; only the edge-appended entry counts.
+        """
+        req = func.HttpRequest(
+            "GET", "/api/updateCounter",
+            headers={"x-forwarded-for": "203.0.113.77, 198.51.100.9:44321"}, body=None)
+        self.assertEqual(function_app._get_ip(req), "198.51.100.9")
+
+    def test_edge_header_wins_over_forwarded_for(self):
+        req = func.HttpRequest(
+            "GET", "/api/updateCounter",
+            headers={"x-forwarded-for": "203.0.113.77",
+                     "x-azure-clientip": "198.51.100.9"}, body=None)
+        self.assertEqual(function_app._get_ip(req), "198.51.100.9")
+
+    def test_ip_parsing_edge_cases(self):
+        def ip(**h):
+            return function_app._get_ip(
+                func.HttpRequest("GET", "/api/updateCounter", headers=h, body=None))
+        self.assertEqual(ip(**{"x-forwarded-for": "198.51.100.9:1234"}), "198.51.100.9")
+        self.assertEqual(ip(**{"x-forwarded-for": "198.51.100.9"}), "198.51.100.9")
+        # IPv6 has multiple colons and must not be truncated.
+        self.assertEqual(ip(**{"x-forwarded-for": "2a0a:ef40::1"}), "2a0a:ef40::1")
+        self.assertEqual(ip(), "unknown")
+
     def test_missing_connection_string_returns_500(self):
         del os.environ["COSMOS_CONNECTION_STRING"]
 

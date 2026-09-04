@@ -59,16 +59,32 @@ def _cors_headers(req: func.HttpRequest) -> dict:
     return headers
 
 
-def _get_ip(req: func.HttpRequest) -> str:
-    """Client IP from the proxy headers, first hop only."""
-    ip = req.headers.get("x-forwarded-for") or req.headers.get("x-client-ip") or ""
-    if "," in ip:
-        ip = ip.split(",")[0]
+def _strip_port(ip: str) -> str:
+    """x-forwarded-for on Azure carries "ip:port" for IPv4. IPv6 has many colons."""
     ip = ip.strip()
-    # x-forwarded-for on Azure Functions carries "ip:port".
     if ip.count(":") == 1:
         ip = ip.split(":")[0]
-    return ip or "unknown"
+    return ip
+
+
+def _get_ip(req: func.HttpRequest) -> str:
+    """
+    Client IP, taken only from headers the platform controls.
+
+    x-forwarded-for is appended to by each hop, so its LEFTMOST entry is whatever
+    the caller sent and is trivially forged -- reading that let anyone inflate the
+    counter just by setting the header. The rightmost entry is the one the edge
+    appended, so that is the client we actually saw. Front Door's x-azure-clientip
+    is overwritten at the edge and is preferred where present.
+    """
+    edge_ip = req.headers.get("x-azure-clientip") or req.headers.get("x-azure-socketip")
+    if edge_ip:
+        return _strip_port(edge_ip) or "unknown"
+
+    forwarded = req.headers.get("x-forwarded-for") or req.headers.get("x-client-ip") or ""
+    if forwarded:
+        return _strip_port(forwarded.split(",")[-1]) or "unknown"
+    return "unknown"
 
 
 def _parse_last_visit(entity) -> datetime:
