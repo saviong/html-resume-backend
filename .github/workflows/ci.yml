@@ -1,8 +1,13 @@
-# The API is deployed by the frontend repo's Deploy to Azure Static Web Apps
-# workflow, which checks this repo out into api/. The old Function App
-# (resumevisitor-fn) has been decommissioned, so there is nothing to deploy
-# from here -- this workflow just guards the code with the unit tests.
-name: CI
+# CI/CD for the résumé API.
+#
+# This code is deployed as managed Functions inside the Static Web App, and
+# Static Web Apps publishes the site and API as one atomic upload. So rather
+# than duplicate the deploy here, a push to master calls the frontend repo's
+# reusable workflow, which checks this repo out, tests it, and publishes both
+# halves together.
+#
+# Pull requests only run the tests -- nothing is deployed until it is on master.
+name: CI/CD
 
 on:
   push:
@@ -11,10 +16,15 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Fast feedback on PRs. Pushes to master skip this and go straight to deploy,
+  # which runs the same tests as its gate.
   test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -27,3 +37,11 @@ jobs:
 
       - name: Run unit tests
         run: python -m unittest test -v
+
+  # Publishes the whole site (this API + the current frontend). The reusable
+  # workflow runs these same unit tests first and refuses to deploy if they fail.
+  deploy:
+    if: github.event_name != 'pull_request'
+    uses: saviong/html-resume-frontend/.github/workflows/deploy-swa.yml@master
+    secrets:
+      AZURE_STATIC_WEB_APPS_API_TOKEN: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
