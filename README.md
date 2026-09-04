@@ -6,7 +6,7 @@ It is built with **Azure Functions (Python)** and integrates with **Azure Cosmos
 
 ## 🚀 Overview
 
-- **Frontend**: Static website hosted on Azure Storage with CDN + Front Door ([repo here](https://github.com/saviong/html-resume-frontend)).
+- **Frontend**: Static website ([repo here](https://github.com/saviong/html-resume-frontend)).
 - **Backend**: Azure Function App (Python) that exposes a REST API for counting visitors.
 - **Database**: Azure Cosmos DB (Table API) to persist unique visitors and the total visit count.
 - **CI/CD**: Automated deployments with GitHub Actions and ARM templates.
@@ -16,7 +16,7 @@ It is built with **Azure Functions (Python)** and integrates with **Azure Cosmos
 
 1. A visitor loads the [resume site](https://mycv.saviong.com).
 
-2. The frontend JavaScript makes a call to the backend Function App endpoint: `https://<function-app>.azurewebsites.net/api/updateCounter`
+2. The frontend JavaScript calls the API at `/api/updateCounter`. The Function App's own hostname is `https://resumevisitor-fn-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net` (the app has a unique default hostname, so the short `resumevisitor-fn.azurewebsites.net` form does not resolve).
 
 3. The **Function App**:
 - Extracts the visitor's IP.
@@ -42,11 +42,11 @@ It is built with **Azure Functions (Python)** and integrates with **Azure Cosmos
 
 - `host.json` → Function host configuration.
 
-- `local.settings.json` → Local development settings (not used in production).
+- `local.settings.json` → Local development settings (git-ignored, not used in production).
 
 - `template.json` & `parameters.json` → ARM templates for deploying Azure resources.
 
-- `.github/workflows/deploy.yml` → GitHub Actions pipeline for CI/CD.
+- `.github/workflows/master_resumevisitor-fn.yml` → GitHub Actions pipeline for CI/CD.
 
 
 ## 🔑 Environment Variables
@@ -57,6 +57,10 @@ The Function App relies on the following application settings in Azure:
 
 - `TABLE_NAME` → Name of the table storing visitor counts (default: `VisitorCounter`).
 
+- `ALLOWED_ORIGINS` → Comma-separated CORS allowlist (default `*`). The function emits its own
+  `Access-Control-Allow-Origin`, so the Function App's **platform CORS allowed-origins list must be
+  left empty** — otherwise the platform adds a second header and browsers reject the response.
+
 
 ## 🛠️ Deployment Flow (GitHub Actions)
 
@@ -64,13 +68,9 @@ The Function App relies on the following application settings in Azure:
 
 2. Install dependencies & run tests.
 
-3. Deploy ARM template → ensures Azure resources exist.
+3. Vendor dependencies into `.python_packages/`.
 
-4. Package Python code and vendor dependencies into a zip.
-
-5. Deploy to Azure Function App with `az functionapp deployment source config-zip`.
-
-6. Verify that the function endpoint is active.
+4. Deploy to the Azure Function App with `Azure/functions-action`.
 
 
 ## 🧪 Testing Locally

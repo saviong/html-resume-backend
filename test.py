@@ -1,77 +1,165 @@
 import os
 import unittest
-from unittest.mock import patch, MagicMock, ANY
 from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock, patch
+
 import azure.functions as func
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+from azure.core.exceptions import (
+    ResourceExistsError,
+    ResourceModifiedError,
+    ResourceNotFoundError,
+)
+
 import function_app
+
+
+def entity(**fields):
+    """A table entity that also carries an etag, as get_entity returns."""
+    e = MagicMock(wraps=dict(fields))
+    store = dict(fields)
+    e.get = store.get
+    e.__getitem__ = lambda _s, k: store[k]
+    e.__setitem__ = lambda _s, k, v: store.__setitem__(k, v)
+    e.metadata = {"etag": 'W/"etag"'}
+    e.store = store
+    return e
+
 
 class TestUpdateCounter(unittest.TestCase):
     def setUp(self):
-        """Set up mocks and environment variables for each test."""
-        os.environ['COSMOS_CONNECTION_STRING'] = 'DefaultEndpointsProtocol=https;AccountName=test;AccountKey=test;EndpointSuffix=core.windows.net'
-        self.patcher = patch('function_app.TableServiceClient')
-        mock_TableServiceClient = self.patcher.start()
-        mock_service = MagicMock()
-        mock_TableServiceClient.from_connection_string.return_value = mock_service
+        os.environ["COSMOS_CONNECTION_STRING"] = (
+            "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=test;"
+            "EndpointSuffix=core.windows.net"
+        )
+        function_app._table_client = None  # drop the client cached by earlier tests
+        self.patcher = patch("function_app.TableServiceClient")
+        mock_service_client = self.patcher.start()
+        service = MagicMock()
+        mock_service_client.from_connection_string.return_value = service
         self.mock_table = MagicMock()
-        mock_service.get_table_client.return_value = self.mock_table
+        service.get_table_client.return_value = self.mock_table
 
     def tearDown(self):
-        """Clean up patches and environment variables after each test."""
         self.patcher.stop()
-        del os.environ['COSMOS_CONNECTION_STRING']
+        function_app._table_client = None
+        os.environ.pop("COSMOS_CONNECTION_STRING", None)
+        os.environ.pop("ALLOWED_ORIGINS", None)
 
-    def test_new_visitor_with_existing_counter(self):
-        """Tests a new visitor where the counter already exists."""
-        ip = '1.2.3.6'
-        
-        # In this scenario, create_entity should succeed.
-        # get_entity will only be called for the total counter.
-        self.mock_table.get_entity.return_value = {'count': 10}
+    def request(self, ip="1.2.3.4", method="GET", headers=None):
+        h = {"x-forwarded-for": ip}
+        h.update(headers or {})
+        return func.HttpRequest(method, "/api/updateCounter", headers=h, body=None)
 
-        req = func.HttpRequest('GET', '/api/updateCounter', headers={'x-forwarded-for': ip}, body=None)
-        resp = function_app.update_counter(req)
+    def test_new_visitor_increments_existing_counter(self):
+        self.mock_table.get_entity.return_value = entity(count=10)
+
+        resp = function_app.update_counter(self.request("1.2.3.6"))
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_body().decode(), '{"count": 11}')
-        # Assert that the new IP record was created.
         self.mock_table.create_entity.assert_called_once()
-        # Assert that the total counter was updated.
         self.mock_table.update_entity.assert_called_once()
 
-    def test_visit_within_one_hour_does_not_increment(self):
-        """
-        Tests that a visit from an IP seen within the last hour does NOT increment the counter.
-        """
-        ip = '10.0.0.1'
-        recent_time = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+    def test_first_ever_visit_creates_the_counter(self):
+        self.mock_table.get_entity.side_effect = ResourceNotFoundError("no counter")
 
-        # 1. Mock create_entity to fail by raising ResourceExistsError,
-        #    simulating that the IP record already exists.
+        resp = function_app.update_counter(self.request("1.2.3.7"))
+
+        self.assertEqual(resp.get_body().decode(), '{"count": 1}')
+        self.assertEqual(self.mock_table.create_entity.call_count, 2)  # visitor + counter
+
+    def test_visit_within_one_hour_does_not_increment(self):
+        ip = "10.0.0.1"
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
         self.mock_table.create_entity.side_effect = ResourceExistsError()
 
-        # 2. Mock get_entity to return the existing records when the function
-        #    checks for the timestamp and the total.
-        def get_entity_side_effect(partition_key, row_key):
-            if partition_key == function_app.PK_VISITOR and row_key == ip:
-                return {'lastVisit': recent_time} # The existing visitor record
-            if partition_key == function_app.PK_TOTAL:
-                return {'count': 5} # The current total
-            # This is the line with the typo
-            raise ResourceNotFoundError("Entity not found in mock")
+        def get_entity(*args, **kwargs):
+            pk = kwargs.get("partition_key", args[0] if args else None)
+            if pk == function_app.PK_VISITOR:
+                return entity(lastVisit=recent)
+            return entity(count=5)
 
-        self.mock_table.get_entity.side_effect = get_entity_side_effect
+        self.mock_table.get_entity.side_effect = get_entity
 
-        req = func.HttpRequest('GET', '/api/updateCounter', headers={'x-forwarded-for': ip}, body=None)
-        resp = function_app.update_counter(req)
+        resp = function_app.update_counter(self.request(ip))
 
-        # Assert that the function correctly returned 200 OK and the UNCHANGED count of 5
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.get_body().decode(), '{"count": 5}')
-        # Assert that no NEW entity was created and the total was NOT updated.
         self.mock_table.update_entity.assert_not_called()
 
+    def test_visit_after_one_hour_increments(self):
+        stale = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+        self.mock_table.create_entity.side_effect = ResourceExistsError()
 
-if __name__ == '__main__':
+        def get_entity(*args, **kwargs):
+            pk = kwargs.get("partition_key", args[0] if args else None)
+            if pk == function_app.PK_VISITOR:
+                return entity(lastVisit=stale)
+            return entity(count=7)
+
+        self.mock_table.get_entity.side_effect = get_entity
+
+        resp = function_app.update_counter(self.request("10.0.0.2"))
+
+        self.assertEqual(resp.get_body().decode(), '{"count": 8}')
+
+    def test_missing_last_visit_field_is_treated_as_new(self):
+        """Previously crashed with a TypeError from fromisoformat(None) and returned 500."""
+        self.mock_table.create_entity.side_effect = ResourceExistsError()
+
+        def get_entity(*args, **kwargs):
+            pk = kwargs.get("partition_key", args[0] if args else None)
+            if pk == function_app.PK_VISITOR:
+                return entity()  # legacy row with no lastVisit
+            return entity(count=3)
+
+        self.mock_table.get_entity.side_effect = get_entity
+
+        resp = function_app.update_counter(self.request("10.0.0.3"))
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.get_body().decode(), '{"count": 4}')
+
+    def test_concurrent_increment_retries_instead_of_losing_a_count(self):
+        """A racing writer bumps 5 -> 6; the retry must return 7, not 6."""
+        totals = [entity(count=5), entity(count=6)]
+        self.mock_table.get_entity.side_effect = lambda *a, **k: totals.pop(0)
+        self.mock_table.update_entity.side_effect = [ResourceModifiedError("etag"), None]
+
+        resp = function_app.update_counter(self.request("10.0.0.4"))
+
+        self.assertEqual(resp.get_body().decode(), '{"count": 7}')
+        self.assertEqual(self.mock_table.update_entity.call_count, 2)
+
+    def test_missing_connection_string_returns_500(self):
+        del os.environ["COSMOS_CONNECTION_STRING"]
+
+        resp = function_app.update_counter(self.request())
+
+        self.assertEqual(resp.status_code, 500)
+
+    def test_preflight_returns_204_with_cors_headers(self):
+        resp = function_app.update_counter(self.request(method="OPTIONS"))
+
+        self.assertEqual(resp.status_code, 204)
+        self.assertEqual(resp.headers["Access-Control-Allow-Origin"], "*")
+        self.assertIn("GET", resp.headers["Access-Control-Allow-Methods"])
+
+    def test_origin_allowlist_echoes_only_allowed_origins(self):
+        os.environ["ALLOWED_ORIGINS"] = "https://mycv.saviong.com"
+        self.mock_table.get_entity.return_value = entity(count=1)
+
+        allowed = function_app.update_counter(
+            self.request(headers={"Origin": "https://mycv.saviong.com"})
+        )
+        self.assertEqual(
+            allowed.headers["Access-Control-Allow-Origin"], "https://mycv.saviong.com"
+        )
+
+        function_app._table_client = None
+        denied = function_app.update_counter(self.request(headers={"Origin": "https://evil.test"}))
+        self.assertIsNone(denied.headers.get("Access-Control-Allow-Origin"))
+
+
+if __name__ == "__main__":
     unittest.main()
