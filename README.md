@@ -1,97 +1,133 @@
 # 📝 Savio Ng – Interactive HTML Résumé (Backend)
 
-This is the backend for my [HTML Resume Website](https://mycv.saviong.com).  
-It is built with **Azure Functions (Python)** and integrates with **Azure Cosmos DB (Table API)** to provide a live visitor counter feature.
+The API behind my [HTML Résumé](https://mycv.saviong.com): a Python **Azure Function**
+that serves a visitor counter backed by **Azure Cosmos DB (Table API)**.
 
+It runs as a **managed function inside the Static Web App**, served same-origin at
+`/api`. There is no standalone Function App — `resumevisitor-fn` was decommissioned in
+September 2026.
 
-## 🚀 Overview
+---
 
-- **Frontend**: Static website ([repo here](https://github.com/saviong/html-resume-frontend)).
-- **Backend**: Azure Function App (Python) that exposes a REST API for counting visitors.
-- **Database**: Azure Cosmos DB (Table API) to persist unique visitors and the total visit count.
-- **CI/CD**: Automated deployments with GitHub Actions and ARM templates.
+## 🏛️ Where this code runs
 
+```mermaid
+flowchart LR
+    V["👤 Visitor"]
+
+    subgraph SWA["Azure Static Web Apps · Free · West Europe"]
+        CDN["Global CDN + managed TLS<br/><i>mycv.saviong.com</i>"]
+        STATIC["Static content<br/><i>from html-resume-frontend</i>"]
+        API["Managed Functions · Python 3.11<br/><b>function_app.py</b><br/><i>/api/updateCounter</i>"]
+    end
+
+    COSMOS[("Cosmos DB · Table API · Serverless<br/><i>resumevisitdb / VisitCounter</i>")]
+
+    V -->|HTTPS| CDN
+    CDN --> STATIC
+    CDN -->|"/api/*"| API
+    API <--> COSMOS
+
+    style API stroke-width:3px
+```
+
+---
 
 ## ⚙️ How It Works
 
-1. A visitor loads the [resume site](https://mycv.saviong.com).
+1. The page calls `/api/updateCounter` — same origin, so no CORS preflight.
+2. The function takes the client IP from `x-forwarded-for`, **stripping the ephemeral
+   port**, and uses it as the row key.
+3. It tries to `create_entity` for that IP. Success means a first visit. If the row
+   already exists, it counts only when the last visit was over an hour ago.
+4. When it counts, the total is incremented under **ETag optimistic concurrency**, so
+   overlapping requests cannot lose an increment.
+5. Returns JSON:
 
-2. The frontend JavaScript calls the API at `/api/updateCounter`. The Function App's own hostname is `https://resumevisitor-fn-dyb9dsguddgzdzge.uksouth-01.azurewebsites.net` (the app has a unique default hostname, so the short `resumevisitor-fn.azurewebsites.net` form does not resolve).
-
-3. The **Function App**:
-- Extracts the visitor's IP.
-- Checks Cosmos DB Table for whether this IP has visited before.
-- If **new visitor** → increments the total count and stores the IP.
-- If **already counted** → returns the current total without incrementing.
-
-4. Returns a JSON response:
 ```json
-{
-  "count": 123
-}
+{ "count": 123 }
 ```
 
-5. The frontend displays the live visitor count.
+### Table layout
 
+One table (`VisitCounter`) holds both partitions:
+
+| PartitionKey | RowKey | Fields | Purpose |
+|--------------|--------|--------|---------|
+| `counter` | `visits` | `count` | The running total |
+| `visitor` | *client IP* | `lastVisit` | Per-IP hourly throttle |
+
+---
 
 ## 📂 Key Files
 
-- `function_app.py` → Main Azure Function code (HTTP-triggered API).
+| File | Purpose |
+|------|---------|
+| `function_app.py` | The HTTP-triggered function (Python v2 programming model). |
+| `requirements.txt` | `azure-functions`, `azure-data-tables`. |
+| `host.json` | Functions host configuration. |
+| `test.py` | Unit tests (9 cases), run in CI. |
+| `local.settings.json` | Local development only — git-ignored, never deployed. |
+| `.github/workflows/ci.yml` | Runs the tests. Does **not** deploy. |
+| `template.json` / `parameters.json` | Legacy ARM export. Stale — describes the retired architecture. |
 
-- `requirements.txt` → Python dependencies (azure-functions, azure-data-tables, etc.).
-
-- `host.json` → Function host configuration.
-
-- `local.settings.json` → Local development settings (git-ignored, not used in production).
-
-- `template.json` & `parameters.json` → ARM templates for deploying Azure resources.
-
-- `.github/workflows/master_resumevisitor-fn.yml` → GitHub Actions pipeline for CI/CD.
-
+---
 
 ## 🔑 Environment Variables
 
-The Function App relies on the following application settings in Azure:
+Set on the **Static Web App** (Configuration → Application settings):
 
-- `COSMOS_CONNECTION_STRING` → Connection string for Cosmos DB (Table API).
+| Setting | Notes |
+|---------|-------|
+| `COSMOS_CONNECTION_STRING` | Cosmos DB Table API connection string. |
+| `TABLE_NAME` | Currently `VisitCounter`. The code defaults to `VisitorCounter`, so if this is ever unset the function silently reads a **different, empty** table. |
+| `ALLOWED_ORIGINS` | Optional comma-separated CORS allow-list; defaults to `*`. Unused while the API is same-origin. |
 
-- `TABLE_NAME` → Name of the table storing visitor counts (default: `VisitorCounter`).
+> **Note:** the function emits its own `Access-Control-Allow-Origin`. If it is ever
+> hosted somewhere with platform-level CORS, leave that allow-list empty — two
+> `Access-Control-Allow-Origin` headers cause browsers to reject the response.
 
-- `ALLOWED_ORIGINS` → Comma-separated CORS allowlist (default `*`). The function emits its own
-  `Access-Control-Allow-Origin`, so the Function App's **platform CORS allowed-origins list must be
-  left empty** — otherwise the platform adds a second header and browsers reject the response.
+> Managed functions reserve the `AzureWeb*` app-setting prefix, so
+> `AzureWebJobsFeatureFlags` cannot be set here. It is not needed: the v2 decorator
+> model indexes correctly under `apiRuntime: python:3.11`.
 
+---
 
-## 🛠️ Deployment Flow (GitHub Actions)
+## 🛠️ Deployment
 
-1. Checkout code.
+This repo does not deploy itself. The frontend workflow
+([`deploy-swa.yml`](https://github.com/saviong/html-resume-frontend/blob/master/.github/workflows/deploy-swa.yml))
+checks this repo out into `api/` and deploys it with the site.
 
-2. Install dependencies & run tests.
+```mermaid
+flowchart LR
+    A["push to master<br/><i>html-resume-backend</i>"] --> B["CI: unit tests only<br/><i>no deploy</i>"]
+    C["frontend workflow"] -->|"checks out this repo<br/>into api/"| D["static-web-apps-deploy"]
+    D --> E["Managed Functions<br/><i>/api</i>"]
+```
 
-3. Vendor dependencies into `.python_packages/`.
+After merging here, run **Deploy to Azure Static Web Apps** in the frontend repo to
+publish the change.
 
-4. Deploy to the Azure Function App with `Azure/functions-action`.
+> If `/api/*` ever returns a bare `404` with no error anywhere, the usual cause is that
+> `requirements.txt` was not installed: the Python worker cannot import its dependencies,
+> so no functions are indexed. The GitHub Action lets Oryx install them; the local
+> `swa deploy` CLI skips Oryx, so it needs them vendored into
+> `api/.python_packages/lib/site-packages` instead.
 
+---
 
 ## 🧪 Testing Locally
 
-- Install dependencies:
 ```bash
 pip install -r requirements.txt
+python -m unittest test -v
 ```
 
-- Run function locally:
+To run the function host locally, set `COSMOS_CONNECTION_STRING` in
+`local.settings.json` first:
+
 ```bash
 func start
-```
-
-- Test endpoint:
-```bash
 curl http://localhost:7071/api/updateCounter
 ```
-
-## 🚀 Infrastructure diagram
-
-<p align="center">
-  <img src="https://github.com/saviong/html-resume-frontend/blob/master/docs/htmlresume.drawio.png?raw=true" alt="Infrastructure Diagram" width="800">
-</p>
